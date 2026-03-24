@@ -1,6 +1,12 @@
 ![Data Pirates Banner](https://capsule-render.vercel.app/api?type=waving&color=auto&height=300&section=header&text=Data%20Pirates&fontSize=80&fontColor=ffffff&textAlignY=40&desc=The%2099.99%25%20Compression%20Multimodal%20Engine&descSize=22&descColor=c4b5fd&descAlignY=65)
 # 🏴‍☠️ Data Pirates: The Lightning-Fast Forensic Engine
-
+<p align="left">
+  <img src="https://img.shields.io/badge/BUILT%20BY-ARYAN-007EC6?style=for-the-badge&logo=github" alt="Built By Aryan" />
+  <img src="https://img.shields.io/badge/LICENSE-MIT-97CA00?style=for-the-badge" alt="License MIT" />
+  <img src="https://img.shields.io/badge/NODE.JS-18.x+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/REACT-VITE-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React & Vite" />
+  <img src="https://img.shields.io/badge/AI-GEMINI%202.5-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Gemini AI" />
+</p>
 Welcome to **Data Pirates**! 
 
 If you've ever tried to feed a 10GB video or a massive stack of PDFs into an AI model, you know exactly what happens: the browser crashes, the server runs out of memory, or the API times out. 
