@@ -1,6 +1,6 @@
 ![Data Pirates Banner](https://capsule-render.vercel.app/api?type=waving&color=auto&height=300&section=header&text=Data%20Pirates&fontSize=80&fontColor=ffffff&textAlignY=40&desc=The%2099.99%25%20Compression%20Multimodal%20Engine&descSize=22&descColor=c4b5fd&descAlignY=65)
 
-# <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/scale-balanced.svg" width="24" height="24"> Data Pirates: The Lightning-Fast Forensic Engine
+# <img src="https://api.iconify.design/fa6-solid:scale-balanced.svg?color=%23C4B5FD" width="28" height="28" align="center"> Data Pirates: The Lightning-Fast Forensic Engine
 
 <p align="left">
   <img src="https://img.shields.io/badge/BUILT%20BY-ARYAN-007EC6?style=for-the-badge&logo=github" alt="Built By Aryan" />
@@ -18,13 +18,13 @@ We built Data Pirates to solve exactly that. This is a multimodal forensic evide
 
 The result? You get a full, interactive forensic breakdown of your evidence in under 15 seconds.
 
-## <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/bolt.svg" width="20" height="20"> What It Does
+## <img src="https://api.iconify.design/fa6-solid:bolt.svg?color=%23C4B5FD" width="24" height="24" align="center"> What It Does
 * **Upload Anything:** Drop in massive video files, audio tracks, or dense PDFs.
 * **Instant Timelines:** Automatically plots key events, witness statements, and actions on an interactive timeline.
 * **Catch Contradictions:** Cross-references all your files to flag inconsistencies (e.g., a witness on video contradicting a police report PDF).
 * **Millisecond Interrogation:** Ask questions like *"What happened at 1:32?"* and get instant answers without re-uploading the video.
 
-## <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/microchip.svg" width="20" height="20"> Under the Hood (How the Magic Works)
+## <img src="https://api.iconify.design/fa6-solid:microchip.svg?color=%23C4B5FD" width="24" height="24" align="center"> Under the Hood (How the Magic Works)
 
 We didn't just build an API wrapper; we engineered a highly optimized data pipeline. Here is the logic powering the engine:
 
@@ -43,7 +43,7 @@ Nobody likes staring at a loading spinner. We deliver an initial lightweight cas
 ### 4. Factual AI & JSON Repair
 Forensic analysis cannot tolerate AI hallucinations. We strictly enforce `temperature: 0.2` and use negative prompting (e.g., "Describe what is happening, NEVER what it looks like"). Because LLMs sometimes truncate long outputs, we wrote a custom JSON repair algorithm that dynamically closes broken arrays and objects so the app never crashes.
 
-## <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/rocket.svg" width="20" height="20"> Quick Start Guide
+## <img src="https://api.iconify.design/fa6-solid:rocket.svg?color=%23C4B5FD" width="24" height="24" align="center"> Quick Start Guide
 
 Want to run this locally? It's incredibly simple. All you need is [Node.js](https://nodejs.org/) installed on your machine.
 
