@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  @apply bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Smooth theme transitions */
+body, .theme-transition {
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.3s ease;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-neutral-300 dark:bg-neutral-700 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-neutral-400 dark:bg-neutral-600; }
+
+/* Utility classes */
+.glass {
+  @apply bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl;
+}
+
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-violet-500 to-fuchsia-500;
+}
+
+.skeleton {
+  @apply rounded-lg;
+  background: linear-gradient(90deg, #e5e5e5 0%, #d4d4d4 50%, #e5e5e5 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.dark .skeleton {
+  background: linear-gradient(90deg, #262626 0%, #333333 50%, #262626 100%);
+  background-size: 200% 100%;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.pulse-ring {
+  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Severity colors */
+.severity-high { @apply border-red-500/40 bg-red-500/5; }
+.severity-medium { @apply border-amber-500/40 bg-amber-500/5; }
+.severity-low { @apply border-blue-500/40 bg-blue-500/5; }
+
+.dark .severity-high { @apply border-red-500/30 bg-red-500/10; }
+.dark .severity-medium { @apply border-amber-500/30 bg-amber-500/10; }
+.dark .severity-low { @apply border-blue-500/30 bg-blue-500/10; }
