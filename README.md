@@ -1,4 +1,4 @@
-![Data Pirates Banner](https://capsule-render.vercel.app/api?type=waving&color=auto&height=250&section=header&text=Data%20Pirates&fontSize=80&fontColor=ffffff&desc=The%2099.99%25%20Compression%20Multimodal%20Engine&descSize=20&descColor=c4b5fd)
+![Data Pirates Banner](https://capsule-render.vercel.app/api?type=waving&color=auto&height=300&section=header&text=Data%20Pirates&fontSize=80&fontColor=ffffff&textAlignY=40&desc=The%2099.99%25%20Compression%20Multimodal%20Engine&descSize=22&descColor=c4b5fd&descAlignY=65)
 # 🏴‍☠️ Data Pirates: The Lightning-Fast Forensic Engine
 
 Welcome to **Data Pirates**! 
