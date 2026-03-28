@@ -270,8 +270,7 @@ export async function preprocessVideo(filePath, originalName) {
     if (frames.length <= numGeminiFrames) {
       geminiFrames.push(...frames);
     } else {
-      // FIX: Always include the very first and very last frames to anchor the AI's timeline
-      geminiFrames.push(frames); // ✅ ADD HERE
+      geminiFrames.push(frames[0]);
       const step = (frames.length - 2) / (numGeminiFrames - 2);
       for (let i = 1; i < numGeminiFrames - 1; i++) {
         geminiFrames.push(frames[Math.floor(i * step)]);

@@ -66,55 +66,66 @@ const ai = process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_ap
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
   : null;
 
-const ANALYSIS_PROMPT = `You are a forensic evidence analyst. Analyze ALL provided evidence (video frames, audio clips, and documents) together.
+const ANALYSIS_PROMPT = `You are a FORENSIC EVIDENCE ANALYST. You must analyze ALL evidence and create a comprehensive timeline with detailed findings.
 
-ABSOLUTE RULES FOR DESCRIPTIONS — VIOLATIONS WILL MAKE THE ANALYSIS USELESS:
+CRITICAL RULES FOR VIDEO DESCRIPTIONS:
+- NEVER describe people's appearance (hair color, clothes, glasses, race, gender). That is USELESS and FORBIDDEN.
+- NEVER write generic labels like "man speaks in courtroom", "woman testifies", "person at podium", "courtroom scene continues"
+- Instead you MUST describe: the SPECIFIC legal argument being made, the EXACT claim or statement, the EVIDENCE being presented, the RULING or OBJECTION
+- GOOD: "Attorney argues FOIA Section 552(a)(3) requires BIA to disclose unsolved murder records"
+- GOOD: "Judge rules government failed to demonstrate exemption under FOIA Exemption 7(A)"
+- GOOD: "Witness testifies that 17,000 homicide cases were reported as unsolved by local agencies"
+- BAD: "Man in suit speaks at podium" — NEVER DO THIS
+- BAD: "Woman testifies in courtroom" — NEVER DO THIS
+- BAD: "Courtroom proceedings continue" — NEVER DO THIS
+- LISTEN TO THE AUDIO SAMPLES CAREFULLY: transcribe the ACTUAL words being spoken, identify WHO is speaking (judge, attorney, witness), and describe what LEGAL ARGUMENT or FACTUAL CLAIM is being made
+- Each video event description must include at least one DIRECT QUOTE or SPECIFIC FACTUAL CLAIM from the audio
+- Reference specific legal statutes, case names, organizations, dates, and numbers mentioned in the video
 
-1. NEVER EVER describe what things LOOK LIKE. No chairs, tables, desks, walls, rooms, screens, podiums, curtains, furniture, clothing, hair color, skin color, camera angles, lighting, or any physical appearance.
+CRITICAL RULES FOR DOCUMENTS:
+- Analyze EVERY SINGLE PAGE. Do NOT skip pages.
+- For a 26-page document: produce events for pages 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26
+- Quote EXACT text from each page
+- Include page number in every document event
+- For document events: set "page" to the actual page number (1, 2, 3...), set "time" to "Page X" (e.g. "Page 1", "Page 12")
+- Document event labels must describe what the page CONTAINS (e.g. "MAP files FOIA request for unsolved homicide data"), NOT reference timestamps
+- IMPORTANT: For EACH document event, set "related_video_seconds" to the video timestamp (in seconds) where the topic on that page is discussed or referenced in the video. Cross-reference the document content with the video to find the most relevant moment. If no direct match, use the closest relevant video moment. This MUST be a real number, NOT null.
 
-2. ALWAYS describe what is HAPPENING, what is being SAID, what CLAIMS are being made, what EVIDENCE is shown.
+VIDEO TIMELINE SPACING:
+- Space events EVENLY across the video duration
+- For a 2-hour video (7200s): events at ~0:05, ~0:10, ~0:15... every 5 minutes minimum
+- Do NOT cluster events at the beginning (1s, 2s, 3s, 6s). That is WRONG.
+- timestamp_seconds must reflect real positions throughout the entire video
+- EVERY video event MUST have a meaningful "label" that describes WHAT HAPPENS (e.g. "Attorney argues for disclosure of records"), NOT generic labels like "Frame @ 04:19" or "Video continues"
+- EVERY video event MUST have a detailed "description" (3-5 sentences) explaining the content, dialogue, and significance at that moment
 
-EXAMPLES OF BANNED DESCRIPTIONS (never write anything like these):
-× "A person sitting at a desk with papers"
-× "Wide shot of a room with chairs and a podium"
-× "Man in blue uniform speaking into microphone"
-× "Document displayed on screen with text"
-× "Close-up of a table with evidence bags"
+CONTRADICTIONS — CROSS-REFERENCE BOTH VIDEO AND DOCUMENT:
+- Every contradiction MUST have at least 2 sources, referencing BOTH the video AND the document
+- Source 1 MUST be from the video (type: "video") with a valid timestamp in seconds (NOT 0)
+- Source 2 MUST be from the document (type: "pdf") with a valid page number (NOT 0 or null)
+- Do NOT create contradictions that only reference one file type — always cross-reference BOTH
+- Include detailed quotes and descriptions (3-4 sentences each), not one-liners
+- source.finding must be a full paragraph explaining what was found
+- source.timestamp MUST be a real number (seconds into the video where the contradiction is visible/audible)
+- source.page MUST be a real page number for pdf sources
 
-EXAMPLES OF CORRECT DESCRIPTIONS (always write like these):
-✓ "Officer Smith testifies the suspect was found at 412 Oak Avenue at 11:15 PM"
-✓ "Defense attorney argues the chain of custody was broken — 3 hours unaccounted for"
-✓ "Dispatch recording confirms units were called to 4th and Main, contradicting the report's address"
-✓ "Page 12 reveals the forensic report was filed 5 days after evidence collection, outside standard procedure"
-✓ "Witness states she heard two gunshots at approximately 10:30 PM, not three as the report claims"
-
-For EVERY timeline event ask yourself: "Am I describing WHAT HAPPENED or WHAT IT LOOKS LIKE?" If you're describing appearances, REWRITE IT.
-
-AUDIO ANALYSIS: Listen to what people SAY. Transcribe key quotes. Note tone, urgency, contradictions.
-
-VIDEO FRAME ANALYSIS: Read any on-screen text, transcribe visible documents/exhibits, identify what proceeding or activity is underway. IGNORE the physical setting.
-
-SOURCE TYPE RULES:
-- "video" = anything from a video file (frames AND its audio track)
-- "audio" = ONLY for standalone audio files uploaded separately
-- "pdf" = documents
-- NEVER label video audio as "audio"
-
-SEVERITY: "high" = direct contradiction or missing evidence, "medium" = inconsistency, "low" = minor difference.
+SOURCE TYPES: "video" for video files (including audio track), "pdf" for documents, "audio" for standalone audio only, "image" for images
+SEVERITY: "high" = direct contradiction, "medium" = inconsistency, "low" = minor difference
 
 Return ONLY valid JSON (no markdown, no code fences):
 {
-  "caseId": "unique-id",
-  "caseName": "descriptive case name",
-  "summary": "4-5 sentences: what the evidence shows, key contradictions found, what needs investigation",
+  "caseId": "string",
+  "caseName": "string",
+  "summary": "4-6 sentence comprehensive summary of ALL evidence and key findings",
   "timeline": [
     {
-      "time": "HH:MM:SS or Page N",
-      "timestamp_seconds": number_or_null,
-      "page": number_or_null,
-      "label": "5-8 words: the ACTION or CLAIM (never appearance)",
+      "time": "HH:MM:SS for video/audio, or 'Page X' for documents",
+      "timestamp_seconds": "number for video/audio, null for documents",
+      "page": "number for documents, null for video/audio",
+      "related_video_seconds": "FOR DOCUMENT EVENTS ONLY: number (seconds into video where this page's content is discussed). null for video events.",
+      "label": "5-10 word SPECIFIC description — what legal argument, claim, or evidence is being presented",
       "source": "pdf|video|audio|image|conflict",
-      "description": "2-3 sentences: what is said/claimed/done, why it matters to the case",
+      "description": "3-5 detailed sentences with SPECIFIC quotes, legal citations, case facts — NOT generic visual descriptions",
       "icon": "phone|siren|car|user|alert|file|camera|mic|map|clock"
     }
   ],
@@ -122,26 +133,41 @@ Return ONLY valid JSON (no markdown, no code fences):
     {
       "id": "c1",
       "severity": "high|medium|low",
-      "title": "specific contradiction title",
-      "description": "2-3 sentences explaining the contradiction",
+      "title": "Clear title of the discrepancy",
+      "description": "3-4 sentences explaining the contradiction in detail, what it means for the case, and why it matters",
       "sources": [
-        { "type": "pdf|video|audio|image", "label": "source name", "page": null, "quote": "exact quote or description", "timestamp": null, "finding": "what this source claims" }
+        {
+          "type": "pdf|video|audio|image",
+          "label": "File name or description",
+          "page": number_or_null,
+          "quote": "Exact quote or detailed transcript of what is said/written",
+          "timestamp": number_or_null,
+          "finding": "2-3 sentence detailed explanation of what this source shows and why it contradicts the other source"
+        }
       ],
       "additionalNotes": "string or null"
     }
   ],
   "keyObservations": [
-    { "title": "string", "description": "string with timestamps/pages", "timestamp_seconds": null, "page": null, "relatedSources": ["string"] }
+    {
+      "title": "Observation title",
+      "description": "Detailed description with specific page/timestamp references",
+      "timestamp_seconds": number_or_null,
+      "page": number_or_null,
+      "relatedSources": ["source labels"]
+    }
   ]
 }
 
-MINIMUM QUANTITIES:
-- Video timeline: 1 event per 5 minutes of video
-- Document timeline: 1 event per 2 pages
-- Contradictions: at least 3
-- Key observations: at least 3
+MINIMUM REQUIREMENTS:
+- Video timeline: 1 event per 5 minutes minimum (2hr video = 24+ events, evenly spaced)
+- Document timeline: 1 event per page minimum (26 pages = 26 events)
+- Contradictions: minimum 5 when both video and PDF uploaded, must cross-reference BOTH files
+- Each contradiction description: minimum 3 sentences
+- Each source finding: minimum 2 sentences
+- keyObservations: minimum 5
 
-Be concise and fast. Focus on SUBSTANCE — every event must describe meaningful content.`;
+Return ONLY the JSON.`;
 
 // ─── FALLBACK: Direct upload to Gemini (for when preprocessing fails) ──
 
@@ -506,9 +532,15 @@ const inlineParts = parts.filter(p => p.inlineData);
       try {
         analysis = JSON.parse(fixed);
       } catch {
-        console.error('Parse error:', parseErr.message);
-        console.error('Raw text (first 500):', text.substring(0, 500));
-        throw new Error('Failed to parse AI response as JSON. Please try again.');
+        // Last resort: try repairJson which closes unclosed structures
+        try {
+          analysis = JSON.parse(repairJson(fixed));
+          console.log('⚠️  JSON repaired successfully');
+        } catch {
+          console.error('Parse error:', parseErr.message);
+          console.error('Raw text (first 500):', text.substring(0, 500));
+          throw new Error('Failed to parse AI response as JSON. Please try again.');
+        }
       }
     }
 
@@ -564,7 +596,12 @@ const inlineParts = parts.filter(p => p.inlineData);
     // Attach file paths for media viewer
     analysis.files = {};
     for (const [key, fileArr] of Object.entries(files)) {
-      analysis.files[key] = `/uploads/${fileArr[0].filename}`;
+      if (fileArr.length === 1) {
+        analysis.files[key] = `/uploads/${fileArr[0].filename}`;
+      } else {
+        // Multiple files of same type: store as array
+        analysis.files[key] = fileArr.map(f => `/uploads/${f.filename}`);
+      }
     }
 
     // Save ALL local keyframes (including extras not sent to Gemini) for timeline zoom
@@ -781,7 +818,9 @@ app.post('/api/scan-range', async (req, res) => {
     console.log(`🎯 [Custom Scan] Extracting ${duration}s clip from ${startSec}s to ${endSec}s...`);
 
     const clipStart = Date.now();
-    const clipBase64 = await extractCustomRange(fullPath, startSec, endSec);
+    // Run clip extraction and model warmup in parallel for speed
+    const clipBase64Promise = extractCustomRange(fullPath, startSec, endSec);
+    const clipBase64 = await clipBase64Promise;
 
     if (!clipBase64) {
       console.log(`❌ [Custom Scan] FFmpeg failed to extract range.`);
@@ -789,14 +828,24 @@ app.post('/api/scan-range', async (req, res) => {
     }
     console.log(`✅ [Custom Scan] Clip extracted in ${((Date.now() - clipStart)/1000).toFixed(1)}s. Sending to Gemini...`);
 
-    const prompt = `Analyze this video clip (extracted from ${startSec}s to ${endSec}s) and fulfill the following request: "${query}". Provide a direct, factual summary in 2-4 sentences max.`;
+    const prompt = `You are a forensic evidence analyst. Analyze this ${duration}-second video clip (from ${startSec}s to ${endSec}s) and answer: "${query}".
+
+RULES:
+- Only state facts visible/audible in this clip. Do NOT hallucinate.
+- Describe WHAT IS SAID or CLAIMED, not physical appearances.
+- Reference specific timestamps within the clip if relevant.
+- Be concise but thorough: 3-5 sentences covering the key factual findings.`;
 
     const aiStart = Date.now();
 
-    // Model Chaining for speed
+    // Detect mime type from file extension for accuracy
+    const videoExt = path.extname(fullPath).toLowerCase();
+    const videoMime = MIME_MAP[videoExt] || 'video/mp4';
+
+    // Model Chaining for speed — fastest first
     const MODEL_CHAIN = [
-      { model: 'gemini-2.5-flash-lite', config: { temperature: 0.2 } },
-      { model: 'gemini-2.5-flash', config: { temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } } },
+      { model: 'gemini-2.5-flash-lite', config: { temperature: 0.1 } },
+      { model: 'gemini-2.5-flash', config: { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } } },
     ];
 
     let response;
@@ -805,7 +854,7 @@ app.post('/api/scan-range', async (req, res) => {
         response = await ai.models.generateContent({
           model,
           contents: [{ role: 'user', parts: [
-            { inlineData: { mimeType: 'video/mp4', data: clipBase64 } },
+            { inlineData: { mimeType: videoMime, data: clipBase64 } },
             { text: prompt }
           ]}],
           config
@@ -821,12 +870,436 @@ app.post('/api/scan-range', async (req, res) => {
     if (!response) throw new Error("API quota exhausted.");
 
     console.log(`✅ [Custom Scan] Gemini responded in ${((Date.now() - aiStart)/1000).toFixed(1)}s.`);
-    res.json({ summary: response.text });
+    res.json({ summary: response.text?.trim() });
   } catch (err) {
     console.error('❌ [Custom Scan] Error:', err.message);
     res.status(500).json({ message: err.message });
   }
 });
+
+// ─── POST /api/important-events — Extract key events from entire video ──────────
+app.post('/api/important-events', handleUpload, async (req, res) => {
+  try {
+    if (!ai) return res.status(400).json({ message: 'API not configured.' });
+    const { videoPath, videoDuration } = req.body;
+    if (!videoPath) return res.status(400).json({ message: 'Missing videoPath.' });
+
+    const cleanPath = videoPath.startsWith('/') ? videoPath.slice(1) : videoPath;
+    const fullPath = path.join(__dirname, cleanPath);
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ message: 'Video file not found.' });
+    }
+
+    const duration = Number(videoDuration) || 3600;
+    console.log(`\n🎬 [Important Events] Processing ${(duration/60).toFixed(1)}min video...`);
+
+    // For long videos: sample at strategic points; for short: use all frames
+    // Strategy: extract frames at evenly-spaced intervals + audio samples
+    const MAX_SAMPLES = Math.min(12, Math.max(4, Math.floor(duration / 60)));
+    const interval = duration / MAX_SAMPLES;
+
+    // Extract multiple clips in parallel for speed
+    const samplePoints = Array.from({ length: MAX_SAMPLES }, (_, i) =>
+      Math.floor(i * interval + interval / 2)
+    ).filter(t => t < duration);
+
+    console.log(`  📍 Sampling at ${samplePoints.length} points: ${samplePoints.map(t => `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`).join(', ')}`);
+
+    // Extract short clips at each sample point in parallel
+    const CLIP_DURATION = Math.min(30, Math.floor(interval * 0.4)); // 40% of interval, max 30s
+    const clipPromises = samplePoints.map(async (ts) => {
+      const start = Math.max(0, ts - Math.floor(CLIP_DURATION / 2));
+      const end = Math.min(duration, start + CLIP_DURATION);
+      try {
+        const data = await extractCustomRange(fullPath, start, end);
+        return data ? { ts, start, end, data } : null;
+      } catch { return null; }
+    });
+
+    const clips = (await Promise.all(clipPromises)).filter(Boolean);
+    console.log(`  ✅ Extracted ${clips.length}/${samplePoints.length} clips`);
+
+    if (clips.length === 0) {
+      return res.status(500).json({ message: 'Could not extract video segments.' });
+    }
+
+    // Build parts for Gemini — all clips + one prompt
+    const videoExt = path.extname(fullPath).toLowerCase();
+    const videoMime = MIME_MAP[videoExt] || 'video/mp4';
+    const parts = [];
+
+    for (const clip of clips) {
+      const h = Math.floor(clip.ts / 3600);
+      const m = Math.floor((clip.ts % 3600) / 60);
+      const s = clip.ts % 60;
+      const timeLabel = h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      parts.push({ text: `[Video segment @ ~${timeLabel} (${clip.ts}s), covering ${clip.start}s–${clip.end}s]` });
+      parts.push({ inlineData: { mimeType: videoMime, data: clip.data } });
+    }
+
+    parts.push({ text: `You are a forensic analyst. I have provided ${clips.length} equally-spaced segments from a ${(duration/60).toFixed(1)}-minute video.
+
+Identify the MOST IMPORTANT events in the video. For each event:
+- State WHAT is said, claimed, or done (not what things look like)
+- Reference the exact approximate timestamp
+- Explain why it matters legally or factually
+- Do NOT describe appearances, room settings, or clothing
+
+Return a JSON array of important events, sorted by timestamp:
+[
+  {
+    "timestamp_seconds": 0,
+    "time": "MM:SS or HH:MM:SS",
+    "title": "6-10 word event title",
+    "description": "3-4 sentences: what happened, who said what, why it matters, cross-reference with other moments",
+    "importance": "critical|high|medium",
+    "icon": "phone|siren|car|user|alert|file|camera|mic|map|clock"
+  }
+]
+
+Return ONLY the JSON array. No markdown. No extra text. Minimum 4 events.` });
+
+    const aiStart = Date.now();
+    let response;
+    for (const { model, config } of [
+      { model: 'gemini-2.5-flash-lite', config: { temperature: 0.1 } },
+      { model: 'gemini-2.5-flash', config: { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } } },
+    ]) {
+      try {
+        response = await ai.models.generateContent({ model, contents: [{ role: 'user', parts }], config });
+        break;
+      } catch (err) {
+        const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404');
+        if (isSkip) continue;
+        throw err;
+      }
+    }
+
+    if (!response) return res.status(429).json({ message: 'API quota exhausted.' });
+    console.log(`✅ [Important Events] Gemini responded in ${((Date.now()-aiStart)/1000).toFixed(1)}s`);
+
+    const raw = response.text?.trim() || '[]';
+    const arrMatch = raw.match(/\[[\s\S]*\]/);
+    let events;
+    try {
+      events = JSON.parse(arrMatch ? arrMatch[0] : raw);
+    } catch {
+      try { events = JSON.parse(repairJson(arrMatch?.[0] || raw)); } catch { events = []; }
+    }
+
+    res.json({ events: Array.isArray(events) ? events : [] });
+  } catch (err) {
+    console.error('❌ [Important Events] Error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+// ─── POST /api/knowledge-graph — 3-Agent Agentic Pipeline ─────────────
+// Agent 1: Entity Miner → Agent 2: Relationship Mapper → Agent 3: Critic
+
+app.post('/api/knowledge-graph', async (req, res) => {
+  try {
+    if (!ai) return res.status(400).json({ message: 'API key not configured.' });
+
+    const { analysis } = req.body;
+    if (!analysis) return res.status(400).json({ message: 'No analysis data provided.' });
+
+    const totalStart = Date.now();
+    console.log(`\n🕸️  [Knowledge Graph] Starting 3-Agent Pipeline...`);
+
+    // Build context from analysis data for agents
+    let evidenceContext = `Case: ${analysis.caseName || 'Unknown'}\n`;
+    evidenceContext += `Summary: ${analysis.summary || ''}\n\n`;
+
+    evidenceContext += `=== VIDEO TIMELINE ===\n`;
+    (analysis.timeline || []).filter(e => e.source === 'video' || e.source === 'audio').forEach(e => {
+      evidenceContext += `[${e.time || ''}] (${e.timestamp_seconds ?? '?'}s): ${e.label} — ${e.description || ''}\n`;
+    });
+
+    evidenceContext += `\n=== DOCUMENT PAGES ===\n`;
+    (analysis.timeline || []).filter(e => e.source === 'pdf' || e.source === 'image').forEach(e => {
+      evidenceContext += `[Page ${e.page || '?'}]: ${e.label} — ${e.description || ''}\n`;
+    });
+
+    evidenceContext += `\n=== CONTRADICTIONS FOUND ===\n`;
+    (analysis.contradictions || []).forEach(c => {
+      evidenceContext += `[${c.severity}] ${c.title}: ${c.description}\n`;
+      (c.sources || []).forEach(s => {
+        evidenceContext += `  Source (${s.type}): "${s.quote}" — ${s.finding || ''}\n`;
+      });
+    });
+
+    evidenceContext += `\n=== KEY OBSERVATIONS ===\n`;
+    (analysis.keyObservations || []).forEach(o => {
+      evidenceContext += `${o.title}: ${o.description}\n`;
+    });
+
+    // Collect keyframe URLs for entity-to-frame mapping
+    const keyframeList = (analysis.keyframes || []).map(kf => `${kf.ts}s → ${kf.path}`).join('\n');
+    if (keyframeList) evidenceContext += `\n=== AVAILABLE KEYFRAMES (timestamp → URL) ===\n${keyframeList}\n`;
+
+    const modelChain = [
+      { model: 'gemini-2.5-flash-lite', config: { temperature: 0.1 } },
+      { model: 'gemini-2.5-flash', config: { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } } },
+    ];
+
+    async function callGemini(promptText, label) {
+      const start = Date.now();
+      let response;
+      for (const { model, config } of modelChain) {
+        try {
+          response = await ai.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts: [{ text: promptText }] }],
+            config,
+          });
+          console.log(`  ✅ ${label}: ${model} responded in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+          break;
+        } catch (err) {
+          const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404');
+          if (isSkip) continue;
+          throw err;
+        }
+      }
+      if (!response) throw new Error(`${label}: All models quota-exhausted`);
+      let raw = response.text?.trim() || '';
+      const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) raw = fenceMatch[1].trim();
+      const jsonMatch = raw.match(/[\[{][\s\S]*[\]}]/);
+      if (jsonMatch) raw = jsonMatch[0];
+      try { return JSON.parse(raw); } catch {
+        try { return JSON.parse(repairJson(raw)); } catch {
+          console.error(`  ⚠️  ${label}: JSON parse failed, raw:`, raw.substring(0, 300));
+          throw new Error(`${label}: Failed to parse response`);
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AGENT 1: THE ENTITY MINER
+    // ═══════════════════════════════════════════════════════════════════
+    console.log(`  🔍 Agent 1: Entity Miner starting...`);
+    const agent1Prompt = `You are an ENTITY EXTRACTION specialist for forensic evidence analysis.
+
+EVIDENCE DATA:
+${evidenceContext}
+
+YOUR TASK: Extract the KEY entities from this specific case. Focus on entities that are ACTUALLY named in the evidence. Do NOT invent generic entities.
+
+ENTITY TYPES:
+- "person": NAMED individuals only (e.g. "Thomas Hargrove", "Judge Roberts"). DO NOT create generic entries like "attorney" or "witness" without a name.
+- "organization": NAMED organizations (e.g. "Murder Accountability Project", "Bureau of Indian Affairs")
+- "location": NAMED places (e.g. "U.S. District Court for D.C.", "Indian reservations")
+- "document": NAMED documents/acts (e.g. "Freedom of Information Act", "Uniform Federal Crime Reporting Act")
+- "evidence": Specific evidence items discussed
+- "legal_concept": SPECIFIC legal concepts with identifiers (e.g. "FOIA Exemption 7(A)", "5 U.S.C. § 552")
+- "event": SPECIFIC events with dates or context (e.g. "2015 FOIA Request Filing")
+
+For each entity provide:
+- The exact video timestamp (seconds) where they appear or are discussed
+- The document page number where referenced
+- A case-specific description explaining their ROLE in this particular case
+
+Return ONLY valid JSON:
+{
+  "entities": [
+    {
+      "name": "Full Specific Name",
+      "type": "person|organization|location|document|evidence|legal_concept|event",
+      "description": "2-3 sentences: their specific role in THIS case, what they did, why they matter",
+      "video_timestamp": number_or_null,
+      "page": number_or_null,
+      "keyframe_url": "closest keyframe path or null",
+      "importance": "high|medium|low"
+    }
+  ]
+}
+
+RULES:
+- Only 10-18 entities. Quality over quantity. Every entity must be MEANINGFUL to the case.
+- NO generic entries: "a man", "the judge", "courtroom" are BANNED
+- Every entity name must be SPECIFIC and NAMED (proper nouns)
+- Deduplicate: "MAP" and "Murder Accountability Project" = same entity
+- importance "high" = central to the case (max 4-5 high)
+
+Return ONLY the JSON.`;
+
+    const agent1Result = await callGemini(agent1Prompt, 'Agent 1 (Entity Miner)');
+    const entities = agent1Result.entities || agent1Result || [];
+    console.log(`  📋 Agent 1 found ${entities.length} entities`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AGENT 2: THE RELATIONSHIP MAPPER (GRAPH BUILDER)
+    // ═══════════════════════════════════════════════════════════════════
+    console.log(`  🔗 Agent 2: Relationship Mapper starting...`);
+    const entityList = entities.map((e, i) => `${i + 1}. "${e.name}" (${e.type}) — ${e.description}`).join('\n');
+
+    const agent2Prompt = `You are a RELATIONSHIP MAPPING specialist building a knowledge graph from forensic evidence.
+
+EVIDENCE DATA:
+${evidenceContext}
+
+EXTRACTED ENTITIES:
+${entityList}
+
+YOUR TASK: Find ALL meaningful relationships between these entities. Every relationship MUST cite its source (video timestamp OR document page number).
+
+Return ONLY valid JSON with nodes and edges format:
+{
+  "nodes": [
+    {
+      "id": "1",
+      "label": "Entity Name",
+      "type": "person|organization|location|document|date|evidence|legal_concept|event",
+      "description": "1-2 sentence description",
+      "video_timestamp": number_or_null,
+      "page": number_or_null,
+      "keyframe_url": "path or null",
+      "importance": "high|medium|low"
+    }
+  ],
+  "edges": [
+    {
+      "source": "node_id",
+      "target": "node_id",
+      "relation": "verb phrase describing the link (e.g. 'filed FOIA request to', 'testified about', 'authored')",
+      "citation": "Video @ MM:SS or Page X",
+      "timestamp": number_or_null,
+      "page": number_or_null,
+      "source_file": "video|pdf",
+      "confidence": "high|medium|low",
+      "description": "1 sentence explaining this relationship"
+    }
+  ]
+}
+
+RULES:
+- Every entity from the list MUST appear as a node
+- Find 12-25 edges (relationships). Quality over quantity — every edge must be REAL and EVIDENCE-BASED
+- EVERY edge MUST have a citation (video timestamp or page number) — NO uncited edges
+- Relationships must be SHORT, SPECIFIC verb phrases: "filed FOIA request to", "oversees", "testified about"
+- BANNED generic relations: "is related to", "is associated with", "is connected to", "involves"
+- Node IDs must be sequential strings: "1", "2", "3"...
+- Each node must be CONNECTED to at least one other node (no orphans)
+- DO NOT invent relationships — only include those directly stated in the evidence
+
+Return ONLY the JSON.`;
+
+    const agent2Result = await callGemini(agent2Prompt, 'Agent 2 (Relationship Mapper)');
+    const graph = {
+      nodes: agent2Result.nodes || [],
+      edges: agent2Result.edges || [],
+    };
+    console.log(`  🕸️  Agent 2 built graph: ${graph.nodes.length} nodes, ${graph.edges.length} edges`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AGENT 3: THE CRITIC (FACT CHECKER)
+    // ═══════════════════════════════════════════════════════════════════
+    console.log(`  🔎 Agent 3: Critic starting...`);
+    const edgesForReview = graph.edges.map((e, i) => {
+      const srcNode = graph.nodes.find(n => n.id === e.source);
+      const tgtNode = graph.nodes.find(n => n.id === e.target);
+      return `${i + 1}. "${srcNode?.label || e.source}" → "${e.relation}" → "${tgtNode?.label || e.target}" [Citation: ${e.citation || 'NONE'}]`;
+    }).join('\n');
+
+    const agent3Prompt = `You are a FORENSIC FACT CHECKER reviewing a knowledge graph built from evidence.
+
+ORIGINAL EVIDENCE:
+${evidenceContext}
+
+RELATIONSHIPS TO VERIFY:
+${edgesForReview}
+
+YOUR TASK: Review EACH relationship and determine if it is properly supported by the evidence. Challenge claims. Check citations.
+
+For each edge, provide a verdict:
+- "verified" = The evidence clearly supports this relationship at the cited location
+- "plausible" = The relationship is reasonable but the exact citation may be approximate
+- "unsupported" = Cannot find clear evidence for this relationship — it may be hallucinated
+- "corrected" = The relationship exists but needs correction (e.g. wrong timestamp, wrong direction)
+
+Return ONLY valid JSON:
+{
+  "reviews": [
+    {
+      "edge_index": 1,
+      "verdict": "verified|plausible|unsupported|corrected",
+      "reason": "1-2 sentence explanation of your assessment",
+      "corrected_citation": "Updated citation if corrected, null otherwise",
+      "corrected_relation": "Updated relation text if corrected, null otherwise"
+    }
+  ],
+  "graph_quality_score": 0.0_to_1.0,
+  "summary": "2-3 sentence overall assessment of the knowledge graph quality"
+}
+
+RULES:
+- Review ALL edges
+- Be strict: if a citation doesn't match, mark as "corrected" or "unsupported"
+- Provide specific reasons for each verdict
+- The quality score should reflect: % verified or plausible edges
+
+Return ONLY the JSON.`;
+
+    const agent3Result = await callGemini(agent3Prompt, 'Agent 3 (Critic)');
+    const reviews = agent3Result.reviews || [];
+    console.log(`  ✓ Agent 3 reviewed ${reviews.length} edges | Quality: ${agent3Result.graph_quality_score || '?'}`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MERGE: Apply critic's feedback to graph
+    // ═══════════════════════════════════════════════════════════════════
+    const finalEdges = [];
+    for (let i = 0; i < graph.edges.length; i++) {
+      const edge = graph.edges[i];
+      const review = reviews.find(r => r.edge_index === i + 1);
+      if (review) {
+        edge.verdict = review.verdict;
+        edge.review_reason = review.reason;
+        if (review.corrected_citation) edge.citation = review.corrected_citation;
+        if (review.corrected_relation) edge.relation = review.corrected_relation;
+      } else {
+        edge.verdict = 'unreviewed';
+      }
+      // Keep all except unsupported
+      if (edge.verdict !== 'unsupported') {
+        finalEdges.push(edge);
+      }
+    }
+    graph.edges = finalEdges;
+
+    const totalTime = ((Date.now() - totalStart) / 1000).toFixed(1);
+    console.log(`🕸️  [Knowledge Graph] Pipeline complete in ${totalTime}s | ${graph.nodes.length} nodes, ${graph.edges.length} verified edges`);
+    console.log(`${'─'.repeat(60)}\n`);
+
+    res.json({
+      graph,
+      quality: {
+        score: agent3Result.graph_quality_score || 0,
+        summary: agent3Result.summary || '',
+        total_edges_before: agent2Result.edges?.length || 0,
+        total_edges_after: graph.edges.length,
+        removed_unsupported: (agent2Result.edges?.length || 0) - graph.edges.length,
+      },
+      agents: {
+        entities_found: entities.length,
+        relationships_found: agent2Result.edges?.length || 0,
+        reviews_completed: reviews.length,
+        verdicts: {
+          verified: reviews.filter(r => r.verdict === 'verified').length,
+          plausible: reviews.filter(r => r.verdict === 'plausible').length,
+          corrected: reviews.filter(r => r.verdict === 'corrected').length,
+          unsupported: reviews.filter(r => r.verdict === 'unsupported').length,
+        },
+      },
+      pipeline_time: parseFloat(totalTime),
+    });
+
+  } catch (err) {
+    console.error('❌ [Knowledge Graph] Error:', err.message);
+    res.status(500).json({ message: err.message || 'Knowledge graph generation failed.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n  🏴‍☠️  Data Pirates Server — http://localhost:${PORT}`);
   console.log(`  API key: ${ai ? '✅ Configured' : '❌ Missing (demo mode only)'}`);
