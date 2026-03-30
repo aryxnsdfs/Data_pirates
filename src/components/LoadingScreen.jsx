@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Shield, FileSearch, Brain, CheckCircle, Scan, FileCheck, Upload } from 'lucide-react';
 
 const steps = [
-  { icon: Upload, label: 'Uploading files...' },
+  { icon: Upload, label: 'Preparing files...' },
   { icon: FileSearch, label: 'Reading evidence files...' },
   { icon: Scan, label: 'Extracting key details...' },
   { icon: Brain, label: 'Cross-referencing sources...' },
@@ -94,14 +94,14 @@ export default function LoadingScreen({ analysisReady, uploadProgress, onComplet
   let progress;
   if (analysisReady) {
     progress = 100;
-  } else if (uploadProgress < 100) {
-    // During upload: 0-40% of bar
+  } else if (uploadProgress > 0 && uploadProgress < 100) {
+    // Actively uploading: 0→40%
     progress = Math.round((uploadProgress / 100) * 40);
   } else {
-    // After upload: 40-90% based on completed steps
-    const stepsAfterUpload = completedSteps.size - 1; // minus upload step
-    const totalStepsAfterUpload = steps.length - 2; // minus upload and last step
-    progress = 40 + Math.round((stepsAfterUpload / totalStepsAfterUpload) * 50);
+    // Local mode / after upload: 40→90% based on steps completed
+    const stepsAfterUpload = Math.max(0, completedSteps.size - 1);
+    const totalStepsAfterUpload = steps.length - 2;
+    progress = 40 + Math.round((stepsAfterUpload / Math.max(1, totalStepsAfterUpload)) * 50);
     progress = Math.min(progress, 90);
   }
 

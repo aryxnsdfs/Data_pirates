@@ -5,7 +5,8 @@ import UploadView from './components/UploadView';
 import LoadingScreen from './components/LoadingScreen';
 import Dashboard from './components/Dashboard';
 import SplitScreen from './components/SplitScreen';
-import { analyzeEvidence, translateAnalysis } from './utils/api';
+import { analyzeEvidence, analyzeByPath, translateAnalysis } from './utils/api';
+import { saveReport } from './utils/storage';
 
 export default function App() {
   const [view, setView] = useState('upload');
@@ -29,9 +30,18 @@ export default function App() {
     pendingAnalysis.current = null;
 
     try {
-      const result = await analyzeEvidence(uploadedFiles, (progress) => {
-        setUploadProgress(progress);
-      });
+      let result;
+      if (uploadedFiles._localPaths) {
+        // Local path mode — no upload, server reads files directly
+        result = await analyzeByPath(uploadedFiles._localPaths);
+      } else {
+        result = await analyzeEvidence(uploadedFiles, (progress) => {
+          setUploadProgress(progress);
+        });
+      }
+      // Auto-save to Firebase cloud after every successful analysis
+      const fileMeta = buildFileMeta(uploadedFiles);
+      saveReport(result, fileMeta).catch(() => {}); // fire-and-forget
       pendingAnalysis.current = result;
       setAnalysisReady(true);
     } catch (err) {
@@ -39,6 +49,18 @@ export default function App() {
       setView('upload');
     }
   }, []);
+
+  function buildFileMeta(uploadedFiles) {
+    const meta = {};
+    if (uploadedFiles._localPaths) {
+      meta.localPaths = uploadedFiles._localPaths;
+    }
+    for (const [type, arr] of Object.entries(uploadedFiles)) {
+      if (type.startsWith('_') || !Array.isArray(arr)) continue;
+      meta[type] = arr.map(f => ({ name: f.name, size: f.size }));
+    }
+    return meta;
+  }
 
   // Called by LoadingScreen when animation finishes after analysisReady
   const handleLoadingComplete = useCallback(() => {

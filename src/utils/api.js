@@ -1,3 +1,32 @@
+// Detect if we're connected to a local server (same machine)
+// Returns false when deployed to Firebase Hosting (no local server)
+export async function detectLocalServer() {
+  // On Firebase Hosting (non-localhost), there's no local server
+  if (!window.location.hostname.match(/^(localhost|127\.|192\.168\.|10\.|172\.)/)) {
+    return false;
+  }
+  try {
+    const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.local === true;
+  } catch {
+    return false;
+  }
+}
+
+// Analyze files by local path (no upload — server reads from disk directly)
+export async function analyzeByPath(paths) {
+  const res = await fetch('/api/analyze-local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Local analysis failed');
+  return data;
+}
+
 export async function analyzeEvidence(files, onUploadProgress) {
   const formData = new FormData();
   // Each type is now an array of files

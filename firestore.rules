@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /reports/{reportId} {
+      // Allow all reads and writes (the app handles its own security via API key)
+      // For production, consider adding authentication
+      allow read, write: if true;
+    }
+  }
+}

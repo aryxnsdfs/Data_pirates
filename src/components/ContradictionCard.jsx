@@ -1,8 +1,59 @@
 import { motion } from 'framer-motion';
-import { AlertTriangle, ChevronRight, FileText, Headphones, Video, Image, Eye } from 'lucide-react';
+import { AlertTriangle, ChevronRight, FileText, Headphones, Video, Image, Eye, Clock, Hash, Shield, ShieldCheck } from 'lucide-react';
 import { getSeverityConfig, formatTimestamp, normalizeSources } from '../utils/api';
 
 const sourceIcons = { pdf: FileText, audio: Headphones, video: Video, image: Image };
+
+const sourceColors = {
+  pdf:   { icon: 'text-blue-500',   bg: 'bg-blue-500/8',   border: 'border-blue-500/15',   badge: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+  audio: { icon: 'text-emerald-500', bg: 'bg-emerald-500/8', border: 'border-emerald-500/15', badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+  video: { icon: 'text-amber-500',   bg: 'bg-amber-500/8',   border: 'border-amber-500/15',   badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+  image: { icon: 'text-purple-500',  bg: 'bg-purple-500/8',  border: 'border-purple-500/15',  badge: 'bg-purple-500/10 text-purple-600 dark:text-purple-400' },
+};
+
+
+
+function SourceBlock({ src, index }) {
+  const SrcIcon = sourceIcons[src.type] || FileText;
+  const colors = sourceColors[src.type] || sourceColors.pdf;
+  const sourceLabel = { pdf: 'Document', audio: 'Audio', video: 'Video', image: 'Image' };
+
+  return (
+    <div className={`rounded-xl border ${colors.border} ${colors.bg} p-3.5`}>
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <SrcIcon className={`w-3.5 h-3.5 ${colors.icon} shrink-0`} />
+          <span className={`text-[10px] font-bold uppercase tracking-wide ${colors.icon}`}>
+            Source {index + 1} — {sourceLabel[src.type] || src.type}
+          </span>
+        </div>
+        <span className="text-[10px] text-neutral-500 truncate max-w-[120px]">{src.label}</span>
+        {src.page && (
+          <span className={`ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full ${colors.badge} flex items-center gap-1`}>
+            <Hash className="w-2.5 h-2.5" /> Page {src.page}
+          </span>
+        )}
+        {src.timestamp != null && (
+          <span className={`ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full ${colors.badge} flex items-center gap-1`}>
+            <Clock className="w-2.5 h-2.5" /> {formatTimestamp(src.timestamp)}
+          </span>
+        )}
+      </div>
+
+      {src.finding && (
+        <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed mb-2">
+          {src.finding}
+        </p>
+      )}
+
+      {src.quote && (
+        <blockquote className="text-xs text-neutral-500 dark:text-neutral-400 italic border-l-2 border-current/20 pl-2.5 leading-relaxed mt-1">
+          &ldquo;{src.quote}&rdquo;
+        </blockquote>
+      )}
+    </div>
+  );
+}
 
 export default function ContradictionCard({ contradiction, index, onClick }) {
   const sev = getSeverityConfig(contradiction.severity);
@@ -24,7 +75,7 @@ export default function ContradictionCard({ contradiction, index, onClick }) {
       `}
     >
       {/* Severity badge */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${sev.dot}`} />
           <span className={`text-xs font-bold tracking-wider uppercase ${sev.color}`}>{sev.label}</span>
@@ -38,51 +89,50 @@ export default function ContradictionCard({ contradiction, index, onClick }) {
       </h3>
 
       {/* Description */}
-      <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4 leading-relaxed line-clamp-2">
+      <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4 leading-relaxed">
         {contradiction.description}
       </p>
 
-      {/* All sources */}
-      <div className="space-y-2">
-        {sources.map((src, i) => {
-          const SrcIcon = sourceIcons[src.type] || FileText;
-          return (
-            <div key={i} className="flex items-start gap-2.5 p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50">
-              <SrcIcon className={`w-4 h-4 mt-0.5 shrink-0 ${
-                src.type === 'pdf' ? 'text-blue-500' : src.type === 'audio' ? 'text-emerald-500' : src.type === 'video' ? 'text-amber-500' : 'text-blue-500'
-              }`} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="text-xs font-medium">{src.label}</span>
-                  {src.page && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">
-                      Page {src.page}
-                    </span>
-                  )}
-                  {src.timestamp != null && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-medium">
-                      {formatTimestamp(src.timestamp)}
-                    </span>
-                  )}
-                </div>
-                {/* Show finding summary if available */}
-                {src.finding && (
-                  <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed mb-1">
-                    {src.finding}
-                  </p>
-                )}
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed line-clamp-2 italic">
-                  "{src.quote}"
-                </p>
-              </div>
-            </div>
-          );
-        })}
+      {/* Sources */}
+      <div className="space-y-2.5">
+        {sources.map((src, i) => (
+          <SourceBlock key={i} src={src} index={i} />
+        ))}
       </div>
+
+      {/* Adversarial notes — shows what the verification agent found */}
+      {contradiction.adversarial_notes && (
+        <div className="mt-3 px-3 py-2.5 rounded-lg bg-amber-500/5 border border-amber-500/10">
+          <div className="flex items-start gap-2">
+            <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-500 mb-0.5">Adversarial Review</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                {contradiction.adversarial_notes}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Innocent explanation if exists */}
+      {contradiction.innocent_explanation && (
+        <div className="mt-2 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 mb-0.5">Possible Explanation</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 leading-relaxed">
+                {contradiction.innocent_explanation}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Additional notes */}
       {contradiction.additionalNotes && (
-        <div className="mt-3 px-3 py-2 rounded-lg bg-violet-500/5 border border-violet-500/10">
+        <div className="mt-3 px-3 py-2.5 rounded-lg bg-violet-500/5 border border-violet-500/10">
           <div className="flex items-start gap-2">
             <Eye className="w-3.5 h-3.5 text-violet-500 shrink-0 mt-0.5" />
             <p className="text-xs text-violet-600 dark:text-violet-400 leading-relaxed">

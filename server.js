@@ -66,107 +66,156 @@ const ai = process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_ap
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
   : null;
 
-const ANALYSIS_PROMPT = `You are a FORENSIC EVIDENCE ANALYST. You must analyze ALL evidence and create a comprehensive timeline with detailed findings.
+// ─── 3-PASS ANALYSIS PIPELINE PROMPTS ─────────────────────────────────
+// Pass 1: EXTRACTION — Pure fact extraction from evidence
+// Pass 2: CONTRADICTION DETECTION — Cross-reference all claims
+// Pass 3: ADVERSARIAL VERIFICATION — Challenge each contradiction
 
-CRITICAL RULES FOR VIDEO DESCRIPTIONS:
-- NEVER describe people's appearance (hair color, clothes, glasses, race, gender). That is USELESS and FORBIDDEN.
-- NEVER write generic labels like "man speaks in courtroom", "woman testifies", "person at podium", "courtroom scene continues"
-- Instead you MUST describe: the SPECIFIC legal argument being made, the EXACT claim or statement, the EVIDENCE being presented, the RULING or OBJECTION
-- GOOD: "Attorney argues FOIA Section 552(a)(3) requires BIA to disclose unsolved murder records"
-- GOOD: "Judge rules government failed to demonstrate exemption under FOIA Exemption 7(A)"
-- GOOD: "Witness testifies that 17,000 homicide cases were reported as unsolved by local agencies"
-- BAD: "Man in suit speaks at podium" — NEVER DO THIS
-- BAD: "Woman testifies in courtroom" — NEVER DO THIS
-- BAD: "Courtroom proceedings continue" — NEVER DO THIS
-- LISTEN TO THE AUDIO SAMPLES CAREFULLY: transcribe the ACTUAL words being spoken, identify WHO is speaking (judge, attorney, witness), and describe what LEGAL ARGUMENT or FACTUAL CLAIM is being made
-- Each video event description must include at least one DIRECT QUOTE or SPECIFIC FACTUAL CLAIM from the audio
-- Reference specific legal statutes, case names, organizations, dates, and numbers mentioned in the video
+const PASS1_EXTRACTION_PROMPT = `You are a FORENSIC EVIDENCE EXTRACTION AGENT. Your ONLY job is to extract structured CLAIMS and FACTS from the evidence. NO analysis, NO opinions, NO comparisons.
+
+CRITICAL RULES FOR VIDEO:
+- NEVER describe people's appearance. That is USELESS and FORBIDDEN.
+- NEVER write generic labels like "man speaks in courtroom" or "courtroom proceedings continue"
+- Instead: describe the SPECIFIC legal argument, EXACT claim or statement, EVIDENCE being presented
+- LISTEN TO AUDIO: transcribe ACTUAL words spoken, identify WHO is speaking, what LEGAL ARGUMENT is being made
+- Each event MUST include a DIRECT QUOTE or SPECIFIC FACTUAL CLAIM from the audio
+- Reference specific legal statutes, case names, organizations, dates, and numbers
 
 CRITICAL RULES FOR DOCUMENTS:
 - Analyze EVERY SINGLE PAGE. Do NOT skip pages.
-- For a 26-page document: produce events for pages 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26
 - Quote EXACT text from each page
-- Include page number in every document event
-- For document events: set "page" to the actual page number (1, 2, 3...), set "time" to "Page X" (e.g. "Page 1", "Page 12")
-- Document event labels must describe what the page CONTAINS (e.g. "MAP files FOIA request for unsolved homicide data"), NOT reference timestamps
-- IMPORTANT: For EACH document event, set "related_video_seconds" to the video timestamp (in seconds) where the topic on that page is discussed or referenced in the video. Cross-reference the document content with the video to find the most relevant moment. If no direct match, use the closest relevant video moment. This MUST be a real number, NOT null.
+- For document events: set "page" to actual page number, "time" to "Page X"
+- CRITICAL: For EACH document event, set "related_video_seconds" to the ACTUAL video timestamp (in seconds, must be > 0) where that page's topic is discussed in the video. Find the video moment where the speaker references or discusses the same subject as the document page. NEVER use 0. If you cannot find a match, use null.
 
 VIDEO TIMELINE SPACING:
 - Space events EVENLY across the video duration
-- For a 2-hour video (7200s): events at ~0:05, ~0:10, ~0:15... every 5 minutes minimum
-- Do NOT cluster events at the beginning (1s, 2s, 3s, 6s). That is WRONG.
-- timestamp_seconds must reflect real positions throughout the entire video
-- EVERY video event MUST have a meaningful "label" that describes WHAT HAPPENS (e.g. "Attorney argues for disclosure of records"), NOT generic labels like "Frame @ 04:19" or "Video continues"
-- EVERY video event MUST have a detailed "description" (3-5 sentences) explaining the content, dialogue, and significance at that moment
-
-CONTRADICTIONS — CROSS-REFERENCE BOTH VIDEO AND DOCUMENT:
-- Every contradiction MUST have at least 2 sources, referencing BOTH the video AND the document
-- Source 1 MUST be from the video (type: "video") with a valid timestamp in seconds (NOT 0)
-- Source 2 MUST be from the document (type: "pdf") with a valid page number (NOT 0 or null)
-- Do NOT create contradictions that only reference one file type — always cross-reference BOTH
-- Include detailed quotes and descriptions (3-4 sentences each), not one-liners
-- source.finding must be a full paragraph explaining what was found
-- source.timestamp MUST be a real number (seconds into the video where the contradiction is visible/audible)
-- source.page MUST be a real page number for pdf sources
-
-SOURCE TYPES: "video" for video files (including audio track), "pdf" for documents, "audio" for standalone audio only, "image" for images
-SEVERITY: "high" = direct contradiction, "medium" = inconsistency, "low" = minor difference
+- Do NOT cluster events at the beginning (1s, 2s, 3s). That is WRONG.
+- EVERY event needs a meaningful label and 3-5 sentence description
 
 Return ONLY valid JSON (no markdown, no code fences):
 {
   "caseId": "string",
   "caseName": "string",
-  "summary": "4-6 sentence comprehensive summary of ALL evidence and key findings",
+  "summary": "4-6 sentence comprehensive summary of ALL evidence",
+  "claims": {
+    "video_claims": [
+      {
+        "timestamp_seconds": number,
+        "time": "HH:MM:SS",
+        "speaker": "who said it (judge/attorney/witness name if known)",
+        "claim": "EXACT quote or precise paraphrase of what was stated",
+        "context": "2-3 sentences: what was happening, what argument was being made",
+        "type": "testimony|argument|ruling|objection|statement|evidence_presentation",
+        "icon": "phone|siren|car|user|alert|file|camera|mic|map|clock"
+      }
+    ],
+    "document_claims": [
+      {
+        "page": number,
+        "claim": "EXACT quote from the document",
+        "context": "2-3 sentences: what the page is about, what it asserts",
+        "document_section": "which part of the document (header, paragraph, footnote)",
+        "related_video_seconds": number_greater_than_0_or_null (NEVER 0)
+      }
+    ]
+  },
   "timeline": [
     {
       "time": "HH:MM:SS for video/audio, or 'Page X' for documents",
-      "timestamp_seconds": "number for video/audio, null for documents",
-      "page": "number for documents, null for video/audio",
-      "related_video_seconds": "FOR DOCUMENT EVENTS ONLY: number (seconds into video where this page's content is discussed). null for video events.",
-      "label": "5-10 word SPECIFIC description — what legal argument, claim, or evidence is being presented",
+      "timestamp_seconds": number_for_video_or_null,
+      "page": number_for_documents_or_null,
+      "related_video_seconds": number_greater_than_0_or_null (NEVER 0 — find the real video timestamp),
+      "label": "5-10 word SPECIFIC description",
       "source": "pdf|video|audio|image|conflict",
-      "description": "3-5 detailed sentences with SPECIFIC quotes, legal citations, case facts — NOT generic visual descriptions",
+      "description": "3-5 detailed sentences with SPECIFIC quotes and facts",
       "icon": "phone|siren|car|user|alert|file|camera|mic|map|clock"
-    }
-  ],
-  "contradictions": [
-    {
-      "id": "c1",
-      "severity": "high|medium|low",
-      "title": "Clear title of the discrepancy",
-      "description": "3-4 sentences explaining the contradiction in detail, what it means for the case, and why it matters",
-      "sources": [
-        {
-          "type": "pdf|video|audio|image",
-          "label": "File name or description",
-          "page": number_or_null,
-          "quote": "Exact quote or detailed transcript of what is said/written",
-          "timestamp": number_or_null,
-          "finding": "2-3 sentence detailed explanation of what this source shows and why it contradicts the other source"
-        }
-      ],
-      "additionalNotes": "string or null"
     }
   ],
   "keyObservations": [
     {
       "title": "Observation title",
       "description": "Detailed description with specific page/timestamp references",
-      "timestamp_seconds": number_or_null,
-      "page": number_or_null,
-      "relatedSources": ["source labels"]
+      "timestamp_seconds": REQUIRED_if_video_evidence — set to the actual video timestamp in seconds where this is observed (must be > 0, NOT null if video is present),
+      "page": number_or_null — set to the document page number if this relates to a document,
+      "relatedSources": ["Video Evidence", "Document Evidence", etc.]
     }
   ]
 }
 
 MINIMUM REQUIREMENTS:
-- Video timeline: 1 event per 5 minutes minimum (2hr video = 24+ events, evenly spaced)
-- Document timeline: 1 event per page minimum (26 pages = 26 events)
-- Contradictions: minimum 5 when both video and PDF uploaded, must cross-reference BOTH files
-- Each contradiction description: minimum 3 sentences
-- Each source finding: minimum 2 sentences
+- Video: 1 event per 2 minutes minimum; for videos longer than 10 minutes generate at least 15 events spaced EVENLY across the FULL duration
+- Document: 1 event per page minimum
+- video_claims: minimum 15 claims with exact quotes (more is better)
+- document_claims: 1 per page minimum with exact quotes
 - keyObservations: minimum 5
 
+CRITICAL: For a 30-minute video you MUST produce at least 15 timeline events. Do NOT stop after 6.
+
+Return ONLY the JSON.`;
+
+const PASS2_COMBINED_PROMPT = `You are a CONTRADICTION DETECTION + ADVERSARIAL VERIFICATION AGENT. You perform TWO tasks in ONE pass:
+
+TASK 1: Cross-reference EVERY video claim against EVERY document claim to find mismatches, inconsistencies, and contradictions.
+TASK 2: For EACH contradiction found, immediately play devil's advocate — challenge it, look for innocent explanations, and assign a confidence score.
+
+DETECTION RULES:
+- Every contradiction MUST cite BOTH a video source (with real timestamp in seconds, NOT 0) AND a document source (with real page number, NOT 0)
+- Include EXACT QUOTES from both sources showing the contradiction
+- Each source.finding must be 2-3 sentences explaining what was found
+- Severity: "high" = direct factual contradiction, "medium" = significant inconsistency, "low" = minor discrepancy
+- Be AGGRESSIVE in finding contradictions — look for: different numbers/dates, contradicting statements, omissions, reframing of events, things said on video but missing from documents, things in documents not supported by video
+
+VERIFICATION RULES (apply to EACH contradiction):
+- Could there be an innocent explanation? (paraphrasing, different context, time gap)
+- Are the quotes accurate and in proper context?
+- Is the severity rating justified?
+- If confidence_score < 20, set survived=false to DROP the contradiction
+- Scoring: 90-100=undeniable, 70-89=strong, 50-69=real but contextual, 30-49=weak, 0-29=not real
+
+VIDEO CLAIMS:
+{VIDEO_CLAIMS}
+
+DOCUMENT CLAIMS:
+{DOCUMENT_CLAIMS}
+
+Return ONLY valid JSON (no markdown, no code fences):
+{
+  "contradictions": [
+    {
+      "id": "c1",
+      "survived": true_or_false,
+      "confidence_score": 0_to_100,
+      "severity": "high|medium|low",
+      "title": "Clear title of the discrepancy",
+      "description": "3-4 sentences: what contradicts what, why it matters",
+      "sources": [
+        {
+          "type": "video",
+          "label": "Video evidence",
+          "timestamp": number_NOT_ZERO,
+          "page": null,
+          "quote": "EXACT quote from video transcript",
+          "finding": "2-3 sentences explaining what this source shows"
+        },
+        {
+          "type": "pdf",
+          "label": "Document evidence",
+          "timestamp": null,
+          "page": number_NOT_ZERO,
+          "quote": "EXACT quote from document",
+          "finding": "2-3 sentences explaining what this source shows and why it contradicts"
+        }
+      ],
+      "additionalNotes": "string or null",
+      "video_timestamp": number,
+      "document_page": number,
+      "innocent_explanation": "Best possible innocent explanation, or null",
+      "adversarial_notes": "2-3 sentences: your adversarial assessment"
+    }
+  ]
+}
+
+MINIMUM: Find at least 5 contradictions. Look harder if you find fewer.
 Return ONLY the JSON.`;
 
 // ─── FALLBACK: Direct upload to Gemini (for when preprocessing fails) ──
@@ -248,17 +297,31 @@ async function buildGeminiParts(preprocessedResults) {
         ? `${(result.duration / 3600).toFixed(1)}hr`
         : `${(result.duration / 60).toFixed(1)}min`;
       context += `VIDEO: "${result.originalName}" (${durationStr})\n`;
-      context += `${result.frames.length} keyframes, each labelled with its timestamp:\n`;
+      context += `${result.frames.length} keyframes (scene-change detected, deduplicated), each labelled with its timestamp:\n`;
 
       // Add labelled frames
       for (const frame of result.frames) {
-        if (!frame || !frame.part) continue; // ✅ ADD THIS: Skip broken frames
+        if (!frame || !frame.part) continue;
         const h = Math.floor(frame.timestamp / 3600);
         const m = Math.floor((frame.timestamp % 3600) / 60);
         const s = String(frame.timestamp % 60).padStart(2, '0');
         const label = h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
         parts.push({ text: `[Keyframe @ ${label} (${frame.timestamp}s)]` });
         parts.push(frame.part);
+      }
+
+      // Add transcript if available (from whisper.cpp + pyannote diarization)
+      if (result.transcript?.length > 0) {
+        context += `\n=== LOCAL WHISPER TRANSCRIPT (with speaker diarization) ===\n`;
+        context += `NOTE: This transcript was generated locally by whisper.cpp. Use these timestamps and speaker labels as ground truth.\n`;
+        for (const seg of result.transcript) {
+          const startMin = Math.floor(seg.start / 60);
+          const startSec = Math.floor(seg.start % 60);
+          const label = `${startMin}:${String(startSec).padStart(2, '0')}`;
+          const speaker = seg.speaker ? `[${seg.speaker}]` : '';
+          context += `[${label} (${seg.start.toFixed(1)}s)] ${speaker} "${seg.text}"\n`;
+        }
+        context += '\n';
       }
 
       // Add audio samples — explicitly label them as coming from the VIDEO file
@@ -282,6 +345,18 @@ async function buildGeminiParts(preprocessedResults) {
     } else if (result.type === 'audio') {
       const durationStr = `${(result.duration / 60).toFixed(1)}min`;
       context += `AUDIO FILE: "${result.originalName}" (${durationStr})\n`;
+
+      // Add transcript if available
+      if (result.transcript?.length > 0) {
+        context += `\n=== LOCAL WHISPER TRANSCRIPT ===\n`;
+        for (const seg of result.transcript) {
+          const startMin = Math.floor(seg.start / 60);
+          const startSec = Math.floor(seg.start % 60);
+          const speaker = seg.speaker ? `[${seg.speaker}]` : '';
+          context += `[${startMin}:${String(startSec).padStart(2, '0')}] ${speaker} "${seg.text}"\n`;
+        }
+        context += '\n';
+      }
 
       if (result.audioSamples?.length > 0) {
         const isFullAudio = result.audioSamples.length === 1 && result.audioSamples[0].isFullAudio;
@@ -353,22 +428,12 @@ function handleUpload(req, res, next) {
   });
 }
 
-app.post('/api/analyze', handleUpload, async (req, res) => {
-  try {
-    if (!ai) {
-      return res.status(400).json({ message: 'GEMINI_API_KEY not configured. Add a valid API key to .env file.' });
-    }
-
-    const files = req.files;
-    if (!files || Object.keys(files).length === 0) {
-      return res.status(400).json({ message: 'No files uploaded.' });
-    }
-
-    const totalStartTime = Date.now();
+// ─── Core pipeline (shared by /api/analyze and /api/analyze-local) ───────
+async function runAnalysisPipeline(files, totalStartTime) {
     const usePreprocessing = isPreprocessingAvailable();
     const totalFileCount = Object.values(files).reduce((n, arr) => n + arr.length, 0);
     console.log(`\n${'─'.repeat(60)}`);
-    console.log(`📂 ${totalFileCount} file(s) received | Preprocessing: ${usePreprocessing ? '✅ ON' : '❌ OFF (FFmpeg not found)'}`);
+    console.log(`📂 ${totalFileCount} file(s) | Preprocessing: ${usePreprocessing ? '✅ ON' : '❌ OFF'}`);
 
     let parts = [];
     let contextText = '';
@@ -458,94 +523,140 @@ app.post('/api/analyze', handleUpload, async (req, res) => {
       contextText = `I am uploading ${fileList.length} evidence file(s) for combined analysis:\n${fileList.join('\n')}\n\nAnalyze ALL of these files TOGETHER.\n\n`;
     }
 
-    // Add the prompt
-    parts.push({ text: contextText + ANALYSIS_PROMPT });
+    // Detect uploaded types early (needed for Pass 2 skip logic)
+    const uploadedTypes = new Set(Object.keys(files));
+    const hasStandaloneAudio = uploadedTypes.has('audio');
+    const hasVideo = uploadedTypes.has('video');
 
-    // Send to Gemini
-    parts = parts.filter(p => p != null); // Strips out any undefined garbage first
-const inlineParts = parts.filter(p => p.inlineData);
+    // ═══════════════════════════════════════════════════════════════════
+    // 2-PASS ANALYSIS PIPELINE (optimized from 3-pass)
+    // Pass 1: Extraction — structured claims from evidence
+    // Pass 2: Combined Contradiction Detection + Adversarial Verification
+    // ═══════════════════════════════════════════════════════════════════
+
+    parts = parts.filter(p => p != null);
+    const inlineParts = parts.filter(p => p.inlineData);
     const totalInlineMB = inlineParts.reduce((s, p) => s + Buffer.from(p.inlineData.data, 'base64').length, 0) / (1024 * 1024);
-    console.log(`🧠 Sending to Gemini: ${parts.length} parts, ${totalInlineMB.toFixed(1)}MB inline data...`);
-    const geminiStart = Date.now();
+    console.log(`🧠 2-Pass Pipeline starting: ${parts.length} parts, ${totalInlineMB.toFixed(1)}MB inline data...`);
 
-    // Model priority: fastest first, fallback if quota/rate-limit hit
-    const MODEL_CHAIN = [
-      { model: 'gemini-2.5-flash-lite', config: { temperature: 0.2 } },
-      { model: 'gemini-2.5-flash', config: { temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } } },
+    // Pass 1 uses flash first (large multimodal output needs high token limit)
+    // Passes 2 & 3 use flash-lite first (text-only, smaller output, faster + cheaper)
+    const PASS1_MODEL_CHAIN = [
+      { model: 'gemini-2.5-flash', config: { temperature: 0, maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } } },
+      { model: 'gemini-2.5-flash-lite', config: { temperature: 0, maxOutputTokens: 32768 } },
+    ];
+    const TEXT_MODEL_CHAIN = [
+      { model: 'gemini-2.5-flash-lite', config: { temperature: 0, maxOutputTokens: 32768 } },
+      { model: 'gemini-2.5-flash', config: { temperature: 0, maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } } },
     ];
 
-    let response;
-    let lastErr;
-    for (const { model, config } of MODEL_CHAIN) {
-      try {
-        console.log(`🧠 Trying model: ${model}...`);
-        response = await ai.models.generateContent({ model, contents: [{ role: 'user', parts }], config });
-        console.log(`✅ Model ${model} responded`);
-        break;
-      } catch (err) {
-        const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.status === 429 || err.status === 404;
-        lastErr = err;
-        if (isSkip) {
-          console.warn(`⚠️  ${model} unavailable — trying next model...`);
-          continue;
+    // Helper: call Gemini with model fallback + JSON parsing + repair
+    async function callGeminiWithParts(promptParts, label, modelChain = PASS1_MODEL_CHAIN) {
+      const start = Date.now();
+      let response;
+      for (const { model, config } of modelChain) {
+        try {
+          console.log(`  🧠 ${label}: Trying ${model}...`);
+          response = await ai.models.generateContent({ model, contents: [{ role: 'user', parts: promptParts }], config });
+          console.log(`  ✅ ${label}: ${model} responded in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+          break;
+        } catch (err) {
+          const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.status === 429 || err.status === 404;
+          if (isSkip) { console.warn(`  ⚠️  ${model} unavailable — trying next...`); continue; }
+          throw err;
         }
-        // Non-quota error — fail immediately
-        const geminiTime = ((Date.now() - geminiStart) / 1000).toFixed(1);
-        console.error(`❌ Gemini API error after ${geminiTime}s:`, err.message || err);
-        return res.status(500).json({ message: `AI analysis failed: ${err.message || 'Unknown error'}` });
+      }
+      if (!response) throw new Error(`${label}: All models quota-exhausted`);
+
+      const raw = response.text?.trim();
+      if (!raw) throw new Error(`${label}: Empty response`);
+
+      let jsonStr = raw;
+      const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1].trim();
+      const jsonMatch = jsonStr.match(/[\[{][\s\S]*[\]}]/);
+      if (jsonMatch) jsonStr = jsonMatch[0];
+
+      try { return JSON.parse(jsonStr); } catch {
+        let fixed = jsonStr.replace(/,\s*([}\]])/g, '$1').replace(/(['"])?(\w+)(['"])?\s*:/g, '"$2":').replace(/:\s*'([^']*)'/g, ': "$1"');
+        try { return JSON.parse(fixed); } catch {
+          try { return JSON.parse(repairJson(fixed)); } catch {
+            console.error(`  ⚠️  ${label}: JSON parse failed, raw:`, raw.substring(0, 500));
+            throw new Error(`${label}: Failed to parse AI response as JSON`);
+          }
+        }
       }
     }
 
-    if (!response) {
-      const geminiTime = ((Date.now() - geminiStart) / 1000).toFixed(1);
-      console.error(`❌ All models quota-exhausted after ${geminiTime}s`);
-      return res.status(429).json({
-        message: 'API quota exhausted on all models. Wait a minute and try again, or check your Gemini API plan at aistudio.google.com.'
-      });
+    // Helper: call Gemini with text-only prompt (uses cheaper flash-lite first)
+    async function callGeminiText(promptText, label) {
+      return callGeminiWithParts([{ text: promptText }], label, TEXT_MODEL_CHAIN);
+    }
+
+    const geminiStart = Date.now();
+
+    // ═══ PASS 1: EXTRACTION ═══════════════════════════════════════════
+    console.log(`\n${'─'.repeat(40)}`);
+    console.log(`📋 PASS 1: Fact Extraction...`);
+
+    const pass1Parts = [...parts, { text: contextText + PASS1_EXTRACTION_PROMPT }];
+    const pass1Result = await callGeminiWithParts(pass1Parts, 'Pass 1 (Extraction)');
+
+    const videoClaims = pass1Result.claims?.video_claims || [];
+    const docClaims = pass1Result.claims?.document_claims || [];
+    console.log(`  📋 Extracted ${videoClaims.length} video claims, ${docClaims.length} document claims`);
+
+    // ═══ PASS 2: COMBINED CONTRADICTION DETECTION + ADVERSARIAL VERIFICATION ═══
+    const canRunPass2 = videoClaims.length > 0 || hasStandaloneAudio;
+    let verifiedContradictions = [];
+
+    if (canRunPass2) {
+      console.log(`\n⚔️🛡️  PASS 2: Contradiction Detection + Adversarial Verification (combined)...`);
+
+      const pass2Prompt = PASS2_COMBINED_PROMPT
+        .replace('{VIDEO_CLAIMS}', JSON.stringify(videoClaims, null, 2))
+        .replace('{DOCUMENT_CLAIMS}', JSON.stringify(docClaims, null, 2));
+
+      const pass2Result = await callGeminiText(pass2Prompt, 'Pass 2 (Detect+Verify)');
+      const allContradictions = pass2Result.contradictions || [];
+      console.log(`  ⚔️  Found ${allContradictions.length} contradictions`);
+
+      // Filter: drop contradictions that didn't survive adversarial review
+      verifiedContradictions = allContradictions
+        .filter(c => c.survived !== false || (c.confidence_score || 50) >= 20)
+        .map(c => ({
+          ...c,
+          confidence: c.confidence_score || 50,
+          adversarial_notes: c.adversarial_notes || null,
+          innocent_explanation: c.innocent_explanation || null,
+        }));
+
+      const dropped = allContradictions.length - verifiedContradictions.length;
+      if (dropped > 0) console.log(`  🛡️  ${verifiedContradictions.length}/${allContradictions.length} survived (${dropped} dropped)`);
+    } else {
+      console.log(`\n⚔️  PASS 2: Skipped — no video/audio to cross-reference against documents`);
     }
 
     const geminiTime = ((Date.now() - geminiStart) / 1000).toFixed(1);
-    console.log(`🧠 Gemini responded in ${geminiTime}s`);
+    console.log(`\n🧠 2-Pass Pipeline complete in ${geminiTime}s`);
 
-    // Parse JSON response — with repair for truncated/broken JSON
-    const text = response.text?.trim();
-    if (!text) throw new Error('Empty response from Gemini');
+    // ═══ ASSEMBLE FINAL ANALYSIS ══════════════════════════════════════
+    let analysis = {
+      caseId: pass1Result.caseId || 'case-001',
+      caseName: pass1Result.caseName || 'Forensic Analysis',
+      summary: pass1Result.summary || '',
+      timeline: pass1Result.timeline || [],
+      contradictions: verifiedContradictions,
+      keyObservations: pass1Result.keyObservations || [],
+      claims: { video: videoClaims, document: docClaims },
+      pipeline: {
+        pass1_claims: { video: videoClaims.length, document: docClaims.length },
+        pass2_contradictions: verifiedContradictions.length,
+        total_time: parseFloat(geminiTime),
+      },
+    };
 
-    // Strip markdown fences if present
-    let jsonStr = text;
-    const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) jsonStr = fenceMatch[1].trim();
-
-    // Try to extract JSON object
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (jsonMatch) jsonStr = jsonMatch[0];
-
-    let analysis;
-    try {
-      analysis = JSON.parse(jsonStr);
-    } catch (parseErr) {
-      // Try to fix common JSON issues: trailing commas, unescaped quotes
-      let fixed = jsonStr
-        .replace(/,\s*([}\]])/g, '$1')           // trailing commas
-        .replace(/(['"])?(\w+)(['"])?\s*:/g, '"$2":')  // unquoted keys
-        .replace(/:\s*'([^']*)'/g, ': "$1"');     // single-quoted values
-      try {
-        analysis = JSON.parse(fixed);
-      } catch {
-        // Last resort: try repairJson which closes unclosed structures
-        try {
-          analysis = JSON.parse(repairJson(fixed));
-          console.log('⚠️  JSON repaired successfully');
-        } catch {
-          console.error('Parse error:', parseErr.message);
-          console.error('Raw text (first 500):', text.substring(0, 500));
-          throw new Error('Failed to parse AI response as JSON. Please try again.');
-        }
-      }
-    }
-
-    // Normalize: ensure sources array exists (backward compat)
-    // Also normalize severity — Gemini sometimes returns "HIGH", "Serious", "SERIOUS" etc.
+    // Normalize severity
     function normalizeSeverity(s) {
       if (!s) return 'medium';
       const v = s.toLowerCase().trim();
@@ -560,7 +671,28 @@ const inlineParts = parts.filter(p => p.inlineData);
         if (!c.sources && c.source1) {
           c.sources = [c.source1, c.source2].filter(Boolean);
         }
-        return { ...c, severity: normalizeSeverity(c.severity) };
+        // Calculate confidence score from multiple signals
+        let confidence = c.confidence || 50;
+
+        // Boost: multiple source types agreeing
+        const sourceTypes = new Set((c.sources || []).map(s => s.type));
+        if (sourceTypes.size >= 2) confidence = Math.min(100, confidence + 10);
+
+        // Boost: has exact quotes from both sides
+        const hasQuotes = (c.sources || []).every(s => s.quote && s.quote.length > 20);
+        if (hasQuotes) confidence = Math.min(100, confidence + 5);
+
+        // Boost: has real timestamps/pages
+        const hasRealCitations = (c.sources || []).every(s =>
+          (s.type === 'video' && s.timestamp > 0) || (s.type === 'pdf' && s.page > 0)
+        );
+        if (hasRealCitations) confidence = Math.min(100, confidence + 5);
+
+        return {
+          ...c,
+          severity: normalizeSeverity(c.severity),
+          confidence: Math.round(confidence),
+        };
       });
     }
     if (!analysis.keyObservations) analysis.keyObservations = [];
@@ -569,10 +701,6 @@ const inlineParts = parts.filter(p => p.inlineData);
     // Gemini often says type:"audio" for speech heard from a VIDEO file's
     // audio track. Fix: if no standalone audio was uploaded, remap all
     // "audio" sources to "video" so the correct player is shown.
-    const uploadedTypes = new Set(Object.keys(files));
-    const hasStandaloneAudio = uploadedTypes.has('audio');
-    const hasVideo = uploadedTypes.has('video');
-
     function fixType(t) {
       if (t === 'audio' && !hasStandaloneAudio && hasVideo) return 'video';
       return t;
@@ -594,13 +722,17 @@ const inlineParts = parts.filter(p => p.inlineData);
     }
 
     // Attach file paths for media viewer
+    // .filename = multer-assigned name; .path = full disk path (local mode uses path only)
+    const getUploadUrl = (f) => {
+      const fname = f.filename || path.basename(f.path || '');
+      return fname ? `/uploads/${fname}` : null;
+    };
     analysis.files = {};
     for (const [key, fileArr] of Object.entries(files)) {
       if (fileArr.length === 1) {
-        analysis.files[key] = `/uploads/${fileArr[0].filename}`;
+        analysis.files[key] = getUploadUrl(fileArr[0]);
       } else {
-        // Multiple files of same type: store as array
-        analysis.files[key] = fileArr.map(f => `/uploads/${f.filename}`);
+        analysis.files[key] = fileArr.map(getUploadUrl).filter(Boolean);
       }
     }
 
@@ -638,7 +770,16 @@ const inlineParts = parts.filter(p => p.inlineData);
     console.log(`✅ Total: ${totalTime}s | Findings: ${analysis.contradictions?.length || 0} | Observations: ${analysis.keyObservations?.length || 0}`);
     console.log(`${'─'.repeat(60)}\n`);
 
-    res.json(analysis);
+    return analysis;
+}
+
+app.post('/api/analyze', handleUpload, async (req, res) => {
+  try {
+    if (!ai) return res.status(400).json({ message: 'GEMINI_API_KEY not configured. Add a valid API key to .env file.' });
+    const files = req.files;
+    if (!files || Object.keys(files).length === 0) return res.status(400).json({ message: 'No files uploaded.' });
+    const result = await runAnalysisPipeline(files, Date.now());
+    res.json(result);
   } catch (error) {
     console.error('Analysis error:', error);
     res.status(500).json({ message: error.message || 'Analysis failed.' });
@@ -1299,6 +1440,81 @@ Return ONLY the JSON.`;
     res.status(500).json({ message: err.message || 'Knowledge graph generation failed.' });
   }
 });
+
+// ─── GET /api/ping — Local mode detection ──────────────────────────────
+app.get('/api/ping', (req, res) => {
+  res.json({ ok: true, local: true, preprocessing: isPreprocessingAvailable() });
+});
+
+// ─── POST /api/analyze-local — Read files directly from local paths ────
+// Used when PWA is installed and server runs on same machine (no upload needed)
+app.post('/api/analyze-local', async (req, res) => {
+  try {
+    if (!ai) return res.status(400).json({ message: 'GEMINI_API_KEY not configured.' });
+
+    const { paths } = req.body; // { video?: string, pdf?: string[], audio?: string }
+    if (!paths || Object.keys(paths).length === 0) {
+      return res.status(400).json({ message: 'No file paths provided.' });
+    }
+
+    // Security: validate all paths are absolute and exist
+    const allPaths = [
+      ...(paths.video ? [{ type: 'video', p: paths.video }] : []),
+      ...(paths.audio ? [{ type: 'audio', p: paths.audio }] : []),
+      ...((paths.pdf || []).map(p => ({ type: 'pdf', p }))),
+    ];
+
+    for (const { p } of allPaths) {
+      if (!path.isAbsolute(p)) return res.status(400).json({ message: `Path must be absolute: ${p}` });
+      if (!fs.existsSync(p)) return res.status(404).json({ message: `File not found: ${p}`, code: 'FILE_NOT_FOUND' });
+    }
+
+    const totalStartTime = Date.now();
+    console.log(`\n${'─'.repeat(60)}`);
+    console.log(`📂 Local-path mode: ${allPaths.length} file(s)`);
+    allPaths.forEach(({ type, p }) => console.log(`  ${type}: ${p}`));
+
+    // Copy files into uploads dir under temp names so we can serve them later
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+    const fakeFiles = {};
+    const copiedPaths = {};
+    for (const { type, p } of allPaths) {
+      const ext = path.extname(p);
+      const fname = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+      const dest = path.join(uploadsDir, fname);
+      fs.copyFileSync(p, dest);
+      copiedPaths[type] = dest;
+      if (!fakeFiles[type]) fakeFiles[type] = [];
+      fakeFiles[type].push({
+        path: dest,
+        originalname: path.basename(p),
+        mimetype: getMimeByExt(ext),
+        size: fs.statSync(p).size,
+        _localSourcePath: p,
+      });
+    }
+
+    const result = await runAnalysisPipeline(fakeFiles, totalStartTime);
+    result.localPaths = paths; // store original paths for re-use
+    res.json(result);
+  } catch (error) {
+    console.error('Local analysis error:', error);
+    res.status(500).json({ message: error.message || 'Analysis failed.' });
+  }
+});
+
+function getMimeByExt(ext) {
+  return {
+    '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
+    '.mkv': 'video/x-matroska', '.webm': 'video/webm', '.wmv': 'video/x-ms-wmv',
+    '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4',
+    '.ogg': 'audio/ogg', '.aac': 'audio/aac', '.flac': 'audio/flac',
+    '.pdf': 'application/pdf',
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  }[ext.toLowerCase()] || 'application/octet-stream';
+}
 
 app.listen(PORT, () => {
   console.log(`\n  🏴‍☠️  Data Pirates Server — http://localhost:${PORT}`);

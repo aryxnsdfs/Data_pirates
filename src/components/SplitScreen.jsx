@@ -260,15 +260,18 @@ export default function SplitScreen({ contradiction, files, analysisFiles, onBac
 
         {/* Source panels — always 2 col on desktop */}
         <div className={`grid gap-4 ${sources.length === 1 ? 'grid-cols-1' : 'sm:grid-cols-2'}`}>
-          {sources.map((src, i) => (
-            <SourcePanel
-              key={i}
-              source={src}
-              file={getFilePath(src.type)}
-              label={`Source ${i + 1}`}
-              index={i}
-            />
-          ))}
+          {sources.map((src, i) => {
+            const typeLabel = { pdf: 'Document', video: 'Video', audio: 'Audio', image: 'Image' };
+            return (
+              <SourcePanel
+                key={i}
+                source={src}
+                file={getFilePath(src.type)}
+                label={`Source ${i + 1} — ${typeLabel[src.type] || src.type}`}
+                index={i}
+              />
+            );
+          })}
         </div>
 
         {/* Additional notes */}

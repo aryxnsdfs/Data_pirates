@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Scale, Moon, Sun, ArrowLeft, Globe, Loader2, ChevronDown } from 'lucide-react';
+import { Scale, Moon, Sun, ArrowLeft, Globe, Loader2, ChevronDown, Download } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 const LANGUAGES = [
@@ -25,6 +25,25 @@ export default function Header({ showBack, onBack, caseName, showLanguage, curre
   const { theme, toggleTheme } = useTheme();
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef(null);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installed, setInstalled] = useState(false);
+
+  // Capture PWA install prompt
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', () => { setInstalled(true); setInstallPrompt(null); });
+    // Check if already running as installed PWA
+    if (window.matchMedia('(display-mode: standalone)').matches) setInstalled(true);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') { setInstalled(true); setInstallPrompt(null); }
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -80,6 +99,28 @@ export default function Header({ showBack, onBack, caseName, showLanguage, curre
         </div>
 
         <div className="flex items-center gap-2">
+          {/* PWA Install button */}
+          <AnimatePresence>
+            {installPrompt && !installed && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleInstall}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-violet-500 text-white hover:bg-violet-600 transition-colors shadow-sm shadow-violet-500/30"
+                title="Install Data Pirates as a desktop app for faster local file access"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Install App</span>
+              </motion.button>
+            )}
+          </AnimatePresence>
+          {installed && (
+            <span className="hidden sm:flex items-center gap-1 text-[10px] text-violet-500 font-medium px-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" /> Installed
+            </span>
+          )}
           {/* Language switcher */}
           {showLanguage && (
             <div ref={langRef} className="relative">

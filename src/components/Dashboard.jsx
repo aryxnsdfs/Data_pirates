@@ -4,10 +4,11 @@ import {
   AlertTriangle, Clock, BarChart3, Download, Check,
   Phone, Siren, Car, User, AlertCircle, FileText, Camera, Mic, MapPin,
   X, Eye, Lightbulb, Send, Loader2, ZoomIn, ZoomOut, Search,
+  ChevronDown, Star, MessageSquare,
 } from 'lucide-react';
 import ContradictionCard from './ContradictionCard';
-import { saveReport } from '../utils/storage';
 import { Shield } from 'lucide-react';
+import { saveReport } from '../utils/storage';
 
 const TIMELINE_ICONS = {
   phone: Phone, siren: Siren, car: Car, user: User, alert: AlertTriangle,
@@ -96,8 +97,7 @@ function seekVideo(videoRef, seconds) {
   const go = () => {
     try {
       vid.currentTime = seconds;
-      vid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Flash highlight
+      // Flash highlight without scrolling
       vid.parentElement?.classList.add('ring-2', 'ring-violet-500', 'ring-offset-2');
       setTimeout(() => vid.parentElement?.classList.remove('ring-2', 'ring-violet-500', 'ring-offset-2'), 2000);
     } catch { }
@@ -106,7 +106,7 @@ function seekVideo(videoRef, seconds) {
   else vid.addEventListener('loadedmetadata', go, { once: true });
 }
 
-// ── Timeline Node ────────────────────────────────────────────────────────
+// ── Timeline Node (video/audio only) ────────────────────────────────────
 function TimelineNode({ event, index, total, isSelected, onClick, zoom, keyframeUrl }) {
   const isConflict = event.source === 'conflict';
   const EventIcon = TIMELINE_ICONS[event.icon] || Clock;
@@ -158,42 +158,53 @@ function TimelineNode({ event, index, total, isSelected, onClick, zoom, keyframe
 }
 
 // ── Timeline Detail Panel ────────────────────────────────────────────────
-function TimelineDetail({ event, onClose, onQuery, onSeekVideo }) {
+function TimelineDetail({ event, onClose, onQuery, onSeekVideo, onSeekVideoTimestamp }) {
   if (!event) return null;
   const sourceLabel = { audio: '🎙 Audio', video: '🎬 Video', pdf: '📄 Document', image: '🖼 Image', conflict: '⚠️ Conflict' };
-  const displayTime = formatEventTime(event.time, event.timestamp_seconds);
+  const isDoc = event.source === 'pdf' || event.source === 'image';
+  const displayTime = isDoc ? (event.page ? `Page ${event.page}` : '') : formatEventTime(event.time, event.timestamp_seconds);
+  const relatedVideoTime = event.related_video_seconds != null ? formatEventTime(null, event.related_video_seconds) : null;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 10, scale: 0.98 }}
-      className="mt-4 p-5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-lg"
+      className={`mt-4 p-5 rounded-2xl bg-white dark:bg-neutral-900 border shadow-lg ${isDoc ? 'border-blue-200 dark:border-blue-800/40' : 'border-neutral-200 dark:border-neutral-800'}`}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <p className="font-semibold text-sm">{event.label}</p>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-xs text-neutral-500">{sourceLabel[event.source] || event.source}</span>
-            {displayTime && (
+            {isDoc && event.page && (
               <button
-                onClick={() => {
-                  if ((event.source === 'pdf' || event.source === 'image') && event.page) {
-                    onSeekVideo && onSeekVideo(event.page);
-                  } else {
-                    onSeekVideo && onSeekVideo(event.timestamp_seconds);
-                  }
-                }}
-                className={`text-xs font-mono px-2 py-0.5 rounded-full hover:opacity-80 transition-colors cursor-pointer ${event.source === 'pdf' || event.source === 'image'
-                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20'
-                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
-                  }`}
-                title={event.source === 'pdf' || event.source === 'image' ? `Jump to page ${event.page}` : 'Click to jump video to this time'}
+                onClick={() => onSeekVideo && onSeekVideo(event.page)}
+                className="text-xs font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                title={`Jump to page ${event.page}`}
               >
-                {event.source === 'pdf' || event.source === 'image' ? '📄' : '⏱'} {displayTime}
+                📄 Page {event.page}
               </button>
             )}
-            {event.timestamp_seconds != null && (
+            {isDoc && relatedVideoTime && (
+              <button
+                onClick={() => onSeekVideoTimestamp && onSeekVideoTimestamp(event.related_video_seconds)}
+                className="text-xs font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                title={`Jump to related video moment at ${relatedVideoTime}`}
+              >
+                🎬 Video @ {relatedVideoTime}
+              </button>
+            )}
+            {!isDoc && displayTime && (
+              <button
+                onClick={() => onSeekVideo && onSeekVideo(event.timestamp_seconds)}
+                className="text-xs font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                title="Click to jump video to this time"
+              >
+                ⏱ {displayTime}
+              </button>
+            )}
+            {!isDoc && event.timestamp_seconds != null && (
               <span className="text-xs text-neutral-400">({event.timestamp_seconds}s)</span>
             )}
           </div>
@@ -203,8 +214,8 @@ function TimelineDetail({ event, onClose, onQuery, onSeekVideo }) {
         </button>
       </div>
       <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed mb-4">{event.description}</p>
-      <div className="flex items-center gap-3">
-        {event.timestamp_seconds != null && (event.source === 'video' || event.source === 'audio') && (
+      <div className="flex items-center gap-3 flex-wrap">
+        {!isDoc && event.timestamp_seconds != null && (
           <button
             onClick={() => onSeekVideo && onSeekVideo(event.timestamp_seconds)}
             className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
@@ -212,7 +223,7 @@ function TimelineDetail({ event, onClose, onQuery, onSeekVideo }) {
             <Camera className="w-3 h-3" /> Jump to this moment
           </button>
         )}
-        {(event.source === 'pdf' || event.source === 'image') && event.page && (
+        {isDoc && event.page && (
           <button
             onClick={() => onSeekVideo && onSeekVideo(event.page)}
             className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
@@ -220,8 +231,16 @@ function TimelineDetail({ event, onClose, onQuery, onSeekVideo }) {
             <FileText className="w-3 h-3" /> Go to page {event.page}
           </button>
         )}
+        {isDoc && relatedVideoTime && (
+          <button
+            onClick={() => onSeekVideoTimestamp && onSeekVideoTimestamp(event.related_video_seconds)}
+            className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
+          >
+            <Camera className="w-3 h-3" /> Jump to video @ {relatedVideoTime}
+          </button>
+        )}
         <button
-          onClick={() => onQuery && onQuery(`Tell me more about: ${event.label} at ${displayTime}`)}
+          onClick={() => onQuery && onQuery(`Tell me more about: ${event.label}${isDoc && event.page ? ` on page ${event.page}` : ` at ${displayTime}`}`)}
           className="text-xs text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
         >
           <Send className="w-3 h-3" /> Ask about this event
@@ -366,8 +385,10 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
 
   const [customPrompt, setCustomPrompt] = useState('');
   const [customSummary, setCustomSummary] = useState('');
-  const [isScanningCustom, setIsScanningCustom] = useState(false);  
-  const [selectedTimelineEvent, setSelectedTimelineEvent] = useState(null);
+  const [isScanningCustom, setIsScanningCustom] = useState(false);
+  const [selectedVideoEvent, setSelectedVideoEvent] = useState(null);
+  const [selectedDocEvent, setSelectedDocEvent] = useState(null);
+  const [docDropdownOpen, setDocDropdownOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -376,6 +397,13 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
   const [zoomLevel, setZoomLevel] = useState(1); // 1, 2, 3
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [importantEvents, setImportantEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [showEventsDropdown, setShowEventsDropdown] = useState(false);
+  const [eventsError, setEventsError] = useState('');
+  const [caseQuestion, setCaseQuestion] = useState('');
+  const [caseAnswer, setCaseAnswer] = useState('');
+  const [askingCase, setAskingCase] = useState(false);
   
   // ── Missing Refs & Stats Block Added Back Here ──
   const contradictionsRef = useRef(null);
@@ -383,6 +411,8 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
   const audioRef = useRef(null);
   const pdfIframeRef = useRef(null);
   const pdfSectionRef = useRef(null);
+  const askBoxRef = useRef(null);
+  const askInputRef = useRef(null);
   const [pdfPage, setPdfPage] = useState(1);
 
   const highCount = analysis.contradictions?.filter(c => c.severity === 'high').length || 0;
@@ -443,9 +473,9 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
         keyframeEvents.push({
           time: timeStr,
           timestamp_seconds: kf.ts,
-          label: `Frame @ ${timeStr}`,
+          label: `Video scene at ${timeStr}`,
           source: 'video',
-          description: `Keyframe captured at ${timeStr}. Click to view this moment in the video.`,
+          description: `Analyzed frame captured at ${timeStr}. Click to jump to this moment in the video and inspect what is happening at this point.`,
           icon: 'camera',
           _isKeyframe: true, // marker for rendering
         });
@@ -466,11 +496,10 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
     return merged;
   }, [analysis.timeline, analysis.keyframes, zoomLevel]);
 
-  // Navigate PDF to a specific page
+  // Navigate PDF to a specific page (no scroll — just change the page)
   const seekPdf = useCallback((page) => {
     if (!page) return;
     setPdfPage(page);
-    pdfSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
   const handleStatClick = (filter) => {
@@ -510,8 +539,18 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
     }
   }, []);
 
-  const handleTimelineClick = (event) => {
-    setSelectedTimelineEvent(prev =>
+  const handleVideoTimelineClick = (event) => {
+    setSelectedVideoEvent(prev =>
+      prev?.label === event.label && prev?.timestamp_seconds === event.timestamp_seconds ? null : event
+    );
+    // Seek video to the clicked event's timestamp
+    if (event.timestamp_seconds != null) {
+      handleSeekVideo(event.timestamp_seconds);
+    }
+  };
+
+  const handleDocTimelineClick = (event) => {
+    setSelectedDocEvent(prev =>
       prev?.label === event.label && prev?.timestamp_seconds === event.timestamp_seconds ? null : event
     );
   };
@@ -527,8 +566,8 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
         body: JSON.stringify({
           videoPath: analysis.files?.video || analysis.files?.audio,
           query: customPrompt,
-          startTime: customStart, // <-- Sends Start Time
-          endTime: customEnd      // <-- Sends End Time
+          startTime: customStart,
+          endTime: customEnd
         })
       });
       const data = await res.json();
@@ -537,6 +576,60 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
       setCustomSummary('Failed to fetch custom range analysis.');
     } finally {
       setIsScanningCustom(false);
+    }
+  };
+
+  const handleLoadImportantEvents = async () => {
+    if (loadingEvents || importantEvents.length > 0) {
+      setShowEventsDropdown(v => !v);
+      return;
+    }
+    setLoadingEvents(true);
+    setEventsError('');
+    setShowEventsDropdown(true);
+    try {
+      const res = await fetch('/api/important-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoPath: analysis.files?.video,
+          videoDuration: analysis.videoDuration || 3600,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed');
+      setImportantEvents(data.events || []);
+    } catch (err) {
+      setEventsError(err.message || 'Could not extract important events.');
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
+  const handleAskCase = async (e) => {
+    e?.preventDefault();
+    if (!caseQuestion.trim() || askingCase) return;
+    setAskingCase(true);
+    setCaseAnswer('');
+    try {
+      let ctx = `Case: ${analysis.caseName}\nSummary: ${analysis.summary}\n\nKey findings:\n`;
+      (analysis.contradictions || []).forEach(c => {
+        ctx += `- [${c.severity}] ${c.title}: ${c.description}\n`;
+      });
+      (analysis.keyObservations || []).forEach(o => {
+        ctx += `- ${o.title}: ${o.description}\n`;
+      });
+      const res = await fetch('/api/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: caseQuestion.trim(), context: ctx }),
+      });
+      const data = await res.json();
+      setCaseAnswer(data.answer || data.message || 'No answer returned.');
+    } catch {
+      setCaseAnswer('Could not get an answer — check your connection.');
+    } finally {
+      setAskingCase(false);
     }
   };
   const stats = [
@@ -626,6 +719,41 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
         </div>
       </motion.div>
 
+      {/* ── Ask Anything About This Case ── */}
+      <div ref={askBoxRef} className="mb-8">
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-violet-500/8 to-blue-500/8 border border-violet-500/20">
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare className="w-4 h-4 text-violet-500" />
+            <p className="text-sm font-semibold text-violet-600 dark:text-violet-400">Ask anything about this case</p>
+            <span className="text-[10px] text-neutral-400 ml-1">— get instant answers from the evidence</span>
+          </div>
+          <form onSubmit={handleAskCase} className="flex gap-2">
+            <input
+              ref={askInputRef}
+              value={caseQuestion}
+              onChange={e => setCaseQuestion(e.target.value)}
+              placeholder="e.g. What are the key contradictions? What does the FOIA request say? Who testified at what time?"
+              className="flex-1 px-4 py-2.5 text-sm rounded-xl border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/50 transition-all"
+            />
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+              type="submit" disabled={askingCase || !caseQuestion.trim()}
+              className="p-2.5 rounded-xl bg-violet-500 text-white disabled:opacity-40 hover:bg-violet-600 transition-all shrink-0"
+            >
+              {askingCase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </motion.button>
+          </form>
+          <AnimatePresence>
+            {caseAnswer && (
+              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="mt-3 p-4 rounded-xl bg-white dark:bg-neutral-900 border border-violet-100 dark:border-violet-900/30">
+                <p className="text-xs font-semibold text-violet-500 mb-1.5">Answer</p>
+                <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">{caseAnswer}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
       {/* ── Evidence Files ── */}
       {(analysis.files?.video || analysis.files?.audio || analysis.files?.pdf) && (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="mb-8">
@@ -633,31 +761,39 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
             <Eye className="w-4 h-4" /> Evidence Files
             <span className="text-[10px] font-normal normal-case text-neutral-400 ml-1">Click video timeline pins to jump · Click document pins to navigate pages</span>
           </h2>
-          <div className={`grid gap-4 ${(analysis.files?.video || analysis.files?.audio) && analysis.files?.pdf ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
-            {analysis.files?.video && (
-              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden bg-black transition-all duration-300" id="evidence-video-container">
-                <div className="px-4 py-2.5 bg-neutral-900/80 flex items-center gap-2 border-b border-neutral-700">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-xs font-medium text-neutral-300">Video Evidence</span>
+          {/* Always: video/audio left, PDF right */}
+          <div className={`grid gap-4 ${
+            (analysis.files?.video || analysis.files?.audio) && analysis.files?.pdf
+              ? 'grid-cols-1 sm:grid-cols-2'
+              : 'grid-cols-1'
+          }`}>
+            {/* Left: video then audio */}
+            <div className="flex flex-col gap-4">
+              {analysis.files?.video && (
+                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden bg-black" id="evidence-video-container">
+                  <div className="px-4 py-2.5 bg-neutral-900/80 flex items-center gap-2 border-b border-neutral-700">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-xs font-medium text-neutral-300">Video Evidence</span>
+                  </div>
+                  <video ref={videoRef} src={analysis.files.video} controls className="w-full max-h-[400px] object-contain bg-black" preload="metadata" />
                 </div>
-                <video ref={videoRef} src={analysis.files.video} controls className="w-full max-h-[340px] object-contain" />
-              </div>
-            )}
-            {analysis.files?.audio && (
-              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden p-4 bg-white dark:bg-neutral-900/60">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-xs font-medium text-neutral-500">Audio</span>
+              )}
+              {analysis.files?.audio && (
+                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden p-4 bg-white dark:bg-neutral-900/60">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium text-neutral-500">Audio Recording</span>
+                  </div>
+                  <audio ref={audioRef} src={analysis.files.audio} controls className="w-full" />
                 </div>
-                <audio ref={audioRef} src={analysis.files.audio} controls className="w-full" />
-              </div>
-            )}
+              )}
+            </div>
+            {/* Right: PDF document */}
             {analysis.files?.pdf && (
               <div ref={pdfSectionRef} className="rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden" style={{ height: 520 }}>
                 <div className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800">
                   <span className="w-2 h-2 rounded-full bg-blue-500" />
-                  <span className="text-xs font-medium text-neutral-500">Document</span>
-                  {pdfPage > 1 && <span className="text-[10px] text-blue-500 ml-auto">Page {pdfPage}</span>}
+                  <span className="text-xs font-medium text-neutral-500">Document — Page {pdfPage}</span>
                 </div>
                 <iframe
                   ref={pdfIframeRef}
@@ -778,48 +914,245 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
         {/* Video track */}
         {videoTrackEvents.length > 0 && (
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="w-2 h-2 rounded-full bg-amber-500" />
               <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Video Timeline</span>
               <span className="text-[10px] text-neutral-400">({videoTrackEvents.length} events)</span>
+              {/* Important Events dropdown button */}
+              {analysis.files?.video && (
+                <div className="relative ml-auto">
+                  <button
+                    onClick={handleLoadImportantEvents}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-all"
+                  >
+                    {loadingEvents ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className="w-3.5 h-3.5" />}
+                    Important Events
+                    <ChevronDown className={`w-3 h-3 transition-transform ${showEventsDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {showEventsDropdown && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                        className="absolute right-0 top-full mt-2 w-80 max-h-80 overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl z-30 p-3 space-y-2"
+                      >
+                        <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Key Events in Video</p>
+                        {loadingEvents && (
+                          <div className="flex items-center gap-2 py-4 justify-center">
+                            <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                            <span className="text-xs text-neutral-400">Analyzing full video...</span>
+                          </div>
+                        )}
+                        {eventsError && <p className="text-xs text-red-500 py-2">{eventsError}</p>}
+                        {importantEvents.map((ev, i) => (
+                          <button
+                            key={i}
+                            onClick={() => { handleSeekVideo(ev.timestamp_seconds); setShowEventsDropdown(false); }}
+                            className="w-full text-left p-3 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/10 border border-transparent hover:border-amber-200 dark:hover:border-amber-800/30 transition-all group"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                ev.importance === 'critical' ? 'bg-red-500/10 text-red-500' :
+                                ev.importance === 'high' ? 'bg-amber-500/10 text-amber-500' :
+                                'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+                              }`}>{ev.importance?.toUpperCase() || 'EVENT'}</span>
+                              <span className="text-xs font-mono text-amber-600 dark:text-amber-400">{ev.time}</span>
+                            </div>
+                            <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-0.5">{ev.title}</p>
+                            <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">{ev.description}</p>
+                          </button>
+                        ))}
+                        {!loadingEvents && importantEvents.length === 0 && !eventsError && (
+                          <p className="text-xs text-neutral-400 text-center py-3">No events loaded yet.</p>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
             <div className="overflow-x-auto pb-3 -mx-4 px-4">
               <div className="flex items-start gap-1 min-w-max py-1">
                 {videoTrackEvents.map((event, i, arr) => (
                   <TimelineNode key={`v-${event.timestamp_seconds}-${i}`} event={event} index={i} total={arr.length}
-                    isSelected={selectedTimelineEvent?.label === event.label && selectedTimelineEvent?.timestamp_seconds === event.timestamp_seconds}
-                    onClick={handleTimelineClick}
+                    isSelected={selectedVideoEvent?.label === event.label && selectedVideoEvent?.timestamp_seconds === event.timestamp_seconds}
+                    onClick={handleVideoTimelineClick}
                     zoom={zoomLevel}
                     keyframeUrl={findNearestKeyframe(event.timestamp_seconds)}
                   />
                 ))}
               </div>
             </div>
+            {/* Video detail box - appears right under video timeline */}
+            <AnimatePresence>
+              {selectedVideoEvent && (
+                <TimelineDetail
+                  event={selectedVideoEvent}
+                  onClose={() => setSelectedVideoEvent(null)}
+                  onQuery={(q) => {
+                    setSelectedVideoEvent(null);
+                    setCaseQuestion(q);
+                    setTimeout(() => {
+                      askBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      setTimeout(() => askInputRef.current?.focus(), 300);
+                    }, 50);
+                  }}
+                  onSeekVideo={handleSeekVideo}
+                />
+              )}
+            </AnimatePresence>
           </div>
         )}
 
-        {/* Document track */}
-        {expandedTimeline.some(e => e.source === 'pdf' || e.source === 'image') && (
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Document</span>
-              <span className="text-[10px] text-neutral-400">({expandedTimeline.filter(e => e.source === 'pdf' || e.source === 'image').length} events) — click pins to navigate to that page</span>
-            </div>
-            <div className="overflow-x-auto pb-3 -mx-4 px-4">
-              <div className="flex items-start gap-1 min-w-max py-1">
-                {expandedTimeline.filter(e => e.source === 'pdf' || e.source === 'image').map((event, i, arr) => (
-                  <TimelineNode key={`d-${i}`} event={event} index={i} total={arr.length}
-                    isSelected={selectedTimelineEvent?.label === event.label && selectedTimelineEvent?.timestamp_seconds === event.timestamp_seconds}
-                    onClick={handleTimelineClick}
-                    zoom={zoomLevel}
-                    keyframeUrl={findNearestKeyframe(event.timestamp_seconds)}
-                  />
-                ))}
+        {/* Document track — dropdown list of page summaries */}
+        {expandedTimeline.some(e => e.source === 'pdf' || e.source === 'image') && (() => {
+          const docEvents = expandedTimeline.filter(e => e.source === 'pdf' || e.source === 'image');
+          return (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Document</span>
+                <span className="text-[10px] text-neutral-400">({docEvents.length} pages analyzed)</span>
+                <div className="relative ml-auto">
+                  <button
+                    onClick={() => setDocDropdownOpen(v => !v)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 transition-all"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Document Pages
+                    <ChevronDown className={`w-3 h-3 transition-transform ${docDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {docDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                        className="absolute right-0 top-full mt-2 w-96 max-h-96 overflow-y-auto rounded-2xl border border-blue-200 dark:border-blue-800/40 bg-white dark:bg-neutral-900 shadow-xl z-30 p-3 space-y-1.5"
+                      >
+                        <p className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-2 px-1">Document Page Summaries</p>
+                        {docEvents.map((event, i) => {
+                          const rvs = event.related_video_seconds;
+                          const rvLabel = rvs != null ? formatEventTime(null, rvs) : null;
+                          return (
+                            <button
+                              key={`doc-drop-${i}`}
+                              onClick={() => {
+                                if (event.page) seekPdf(event.page);
+                                setSelectedDocEvent(event);
+                                setDocDropdownOpen(false);
+                              }}
+                              className={`w-full text-left p-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/10 border transition-all group ${
+                                selectedDocEvent?.label === event.label && selectedDocEvent?.page === event.page
+                                  ? 'border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/15'
+                                  : 'border-transparent hover:border-blue-200 dark:hover:border-blue-800/30'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                                  <FileText className="w-2.5 h-2.5" />
+                                  {event.page ? `Page ${event.page}` : `Section ${i + 1}`}
+                                </span>
+                                {rvLabel && (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
+                                    <Camera className="w-2.5 h-2.5" /> {rvLabel}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-0.5">{event.label}</p>
+                              <p className="text-[11px] text-neutral-500 leading-snug line-clamp-2">{event.description}</p>
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
+
+              {/* Compact page pill bar — click any page to navigate */}
+              <div className="overflow-x-auto pb-2 -mx-4 px-4">
+                <div className="flex items-end gap-2 min-w-max py-1">
+                  {(() => {
+                    // Detect if all doc events share the same related_video_seconds — if so, hide them (not useful)
+                    const allRvs = docEvents.map(e => e.related_video_seconds > 0 ? e.related_video_seconds : null).filter(Boolean);
+                    const uniqueRvs = new Set(allRvs);
+                    const allSameTimestamp = uniqueRvs.size <= 1 && allRvs.length > 1;
+
+                    return docEvents.map((event, i) => {
+                      const rvs = event.related_video_seconds > 0 ? event.related_video_seconds : null;
+                      const rvLabel = (rvs != null && !allSameTimestamp) ? formatEventTime(null, rvs) : null;
+                      return (
+                        <div key={`dp-wrap-${i}`} className="flex flex-col items-center gap-1 shrink-0">
+                          {/* Video timestamp badge ABOVE the page pill — click to seek video (only if unique per page) */}
+                          {rvLabel && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleSeekVideo(rvs); }}
+                              className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 hover:bg-amber-500/30 transition-colors flex items-center gap-0.5 whitespace-nowrap"
+                              title={`This page discussed at ${rvLabel} in video — click to jump`}
+                            >
+                              <Camera className="w-2.5 h-2.5" /> {rvLabel}
+                            </button>
+                          )}
+                          {/* Page pill */}
+                          <motion.button
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.1 + i * 0.02 }}
+                            onClick={() => {
+                              if (event.page) seekPdf(event.page);
+                              setSelectedDocEvent(prev =>
+                                prev?.label === event.label && prev?.page === event.page ? null : event
+                              );
+                            }}
+                            className={`flex flex-col items-center px-3 py-2 rounded-xl border transition-all cursor-pointer group hover:shadow-md min-w-[90px] ${
+                              selectedDocEvent?.label === event.label && selectedDocEvent?.page === event.page
+                                ? 'bg-blue-500/10 border-blue-400 dark:border-blue-600 ring-1 ring-blue-400/30'
+                                : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:border-blue-300 dark:hover:border-blue-700'
+                            }`}
+                            title={event.label}
+                          >
+                            <FileText className={`w-4 h-4 mb-0.5 ${
+                              selectedDocEvent?.label === event.label && selectedDocEvent?.page === event.page
+                                ? 'text-blue-500' : 'text-neutral-400 group-hover:text-blue-500'
+                            }`} />
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                              {event.page ? `Page ${event.page}` : `#${i + 1}`}
+                            </span>
+                            <p className="text-[9px] mt-0.5 max-w-[90px] text-center leading-tight text-neutral-500 dark:text-neutral-400 line-clamp-2">
+                              {event.label}
+                            </p>
+                          </motion.button>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Document detail box - appears right under document section */}
+              <AnimatePresence>
+                {selectedDocEvent && (
+                  <TimelineDetail
+                    event={selectedDocEvent}
+                    onClose={() => setSelectedDocEvent(null)}
+                    onQuery={(q) => {
+                      setSelectedDocEvent(null);
+                      setCaseQuestion(q);
+                      setTimeout(() => {
+                        askBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        setTimeout(() => askInputRef.current?.focus(), 300);
+                      }, 50);
+                    }}
+                    onSeekVideo={seekPdf}
+                    onSeekVideoTimestamp={handleSeekVideo}
+                  />
+                )}
+              </AnimatePresence>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Audio-only track (if standalone audio file) */}
         {expandedTimeline.some(e => e.source === 'audio') && (
@@ -832,8 +1165,8 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
               <div className="flex items-start gap-1 min-w-max py-1">
                 {expandedTimeline.filter(e => e.source === 'audio').map((event, i, arr) => (
                   <TimelineNode key={`a-${i}`} event={event} index={i} total={arr.length}
-                    isSelected={selectedTimelineEvent?.label === event.label && selectedTimelineEvent?.timestamp_seconds === event.timestamp_seconds}
-                    onClick={handleTimelineClick}
+                    isSelected={selectedVideoEvent?.label === event.label && selectedVideoEvent?.timestamp_seconds === event.timestamp_seconds}
+                    onClick={handleVideoTimelineClick}
                     zoom={zoomLevel}
                     keyframeUrl={findNearestKeyframe(event.timestamp_seconds)}
                   />
@@ -849,54 +1182,76 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
           </p>
         )}
 
-        <AnimatePresence>
-          {selectedTimelineEvent && (
-            <TimelineDetail
-              event={selectedTimelineEvent}
-              onClose={() => setSelectedTimelineEvent(null)}
-              onQuery={(q) => { setQueryPrefill(q); setSelectedTimelineEvent(null); }}
-              onSeekVideo={selectedTimelineEvent.source === 'pdf' || selectedTimelineEvent.source === 'image' ? seekPdf : handleSeekVideo}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Query bar */}
-        <TimelineQuery
-          analysis={analysis}
-          prefill={queryPrefill}
-          onClearPrefill={() => setQueryPrefill('')}
-        />
       </motion.div>
 
       {/* ── Key Observations ── */}
-      {analysis.keyObservations?.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mb-10">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-4 flex items-center gap-2">
-            <Lightbulb className="w-4 h-4" /> Key Observations ({analysis.keyObservations.length})
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {analysis.keyObservations.map((obs, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 + i * 0.05 }}
-                className="p-4 rounded-2xl bg-white dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800">
-                <div className="flex items-start gap-2 mb-2">
-                  <Eye className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
-                  <p className="text-sm font-semibold">{obs.title}</p>
-                </div>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed mb-2">
-                  <ClickableText text={obs.description} onTimeClick={handleSeekVideo} />
-                </p>
-                {obs.relatedSources?.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {obs.relatedSources.map((s, j) => (
-                      <span key={j} className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500">{s}</span>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      )}
+      {analysis.keyObservations?.length > 0 && (() => {
+        // Pre-compute inferred timestamps for all observations and detect if they're all the same
+        const obsWithTs = analysis.keyObservations.map(obs => {
+          let inferredTs = obs.timestamp_seconds > 0 ? obs.timestamp_seconds : null;
+          if (!inferredTs && analysis.files?.video) {
+            const titleWords = (obs.title || '').toLowerCase().split(/\s+/).filter(w => w.length > 4);
+            const match = (analysis.timeline || []).find(e =>
+              e.timestamp_seconds > 0 &&
+              titleWords.some(w => (e.label || '').toLowerCase().includes(w) || (e.description || '').toLowerCase().includes(w))
+            );
+            if (match) inferredTs = match.timestamp_seconds;
+          }
+          return { obs, inferredTs };
+        });
+
+        const allTs = obsWithTs.map(o => o.inferredTs).filter(Boolean);
+        const uniqueTs = new Set(allTs);
+        const allSameTs = uniqueTs.size <= 1 && allTs.length > 1;
+
+        return (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mb-10">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-4 flex items-center gap-2">
+              <Lightbulb className="w-4 h-4" /> Key Observations ({analysis.keyObservations.length})
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {obsWithTs.map(({ obs, inferredTs }, i) => {
+                // Only show video timestamp if it's unique across observations
+                const showVideoTs = inferredTs != null && !allSameTs && analysis.files?.video;
+                return (
+                  <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 + i * 0.05 }}
+                    className="p-4 rounded-2xl bg-white dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800">
+                    <div className="flex items-start gap-2 mb-2">
+                      <Eye className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
+                      <p className="text-sm font-semibold">{obs.title}</p>
+                    </div>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed mb-2">
+                      <ClickableText text={obs.description} onTimeClick={handleSeekVideo} />
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {showVideoTs && (
+                        <button
+                          onClick={() => handleSeekVideo(inferredTs)}
+                          className="text-[10px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors flex items-center gap-1 font-medium"
+                        >
+                          <Camera className="w-3 h-3" /> Video @ {formatEventTime(null, inferredTs)}
+                          {!obs.timestamp_seconds && <span className="opacity-60 ml-0.5">(~)</span>}
+                        </button>
+                      )}
+                      {obs.page != null && (
+                        <button
+                          onClick={() => seekPdf(obs.page)}
+                          className="text-[10px] px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors flex items-center gap-1 font-medium"
+                        >
+                          <FileText className="w-3 h-3" /> Page {obs.page}
+                        </button>
+                      )}
+                      {obs.relatedSources?.map((s, j) => (
+                        <span key={j} className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500">{s}</span>
+                      ))}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        );
+      })()}
 
       {/* ── Contradictions ── */}
       <div ref={contradictionsRef}>
@@ -913,12 +1268,39 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
             </button>
           )}
         </div>
+        {(!visibleContradictions || visibleContradictions.length === 0) && (
+          <div className="p-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/15 text-center">
+            <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 mb-1">No contradictions detected</p>
+            <p className="text-xs text-neutral-500">
+              {!analysis.files?.video && !analysis.files?.audio
+                ? 'Upload a video or audio file alongside the document to enable cross-reference contradiction detection.'
+                : 'The AI found no significant inconsistencies between the evidence files after adversarial verification.'}
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {visibleContradictions?.map((c, i) => (
-            <ContradictionCard key={c.id || i} contradiction={c} index={i} onClick={onCardClick} />
+            <ContradictionCard key={c.id || i} contradiction={c} index={i} onClick={(contradiction) => {
+              // Evidence linkage: sync video + PDF when clicking a contradiction
+              const videoSource = (contradiction.sources || []).find(s => s.type === 'video');
+              const pdfSource = (contradiction.sources || []).find(s => s.type === 'pdf');
+
+              // Jump video to the contradiction timestamp
+              if (videoSource?.timestamp > 0) {
+                handleSeekVideo(videoSource.timestamp);
+              }
+              // Jump PDF to the contradiction page
+              if (pdfSource?.page > 0) {
+                seekPdf(pdfSource.page);
+              }
+
+              // Also fire original handler for any parent behavior
+              if (onCardClick) onCardClick(contradiction);
+            }} />
           ))}
         </div>
       </div>
+
     </motion.div>
   );
 }

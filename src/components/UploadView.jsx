@@ -1,7 +1,111 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { FileText, Headphones, Video, Upload, Sparkles, X, AlertCircle, Zap, Clock, ChevronRight, Folder } from 'lucide-react';
-import { getSavedReports } from '../utils/storage';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FileText, Headphones, Video, Upload, Sparkles, X, AlertCircle, Zap, Clock, ChevronRight, Folder, HardDrive, Trash2, Cloud, Info, CheckCircle2 } from 'lucide-react';
+import { getSavedReports, deleteReport } from '../utils/storage';
+import { detectLocalServer } from '../utils/api';
+
+function HowToGuide({ isLocal }) {
+  const [open, setOpen] = useState(false);
+
+  const uploadSteps = [
+    { step: '1', text: 'Drop or click to add your video footage, documents (PDF/images), or audio recordings into the boxes below.' },
+    { step: '2', text: 'Mix evidence types for best results — e.g. a court video + a document PDF will find contradictions between them.' },
+    { step: '3', text: 'Click Analyze Evidence and wait ~2 min while AI cross-references everything.' },
+    { step: '4', text: 'Results are automatically saved to the cloud and appear in Saved Reports for future access.' },
+  ];
+
+  const localSteps = [
+    { step: '1', text: 'Switch to the Local Files tab (only visible when the server is running on this machine).' },
+    { step: '2', text: 'Paste the full file path — e.g. C:\\Users\\you\\Videos\\footage.mp4 — into the matching field.' },
+    { step: '3', text: 'Click Analyze Local Files. The server reads directly from your disk — no upload, instant start.' },
+    { step: '4', text: 'Paths are remembered so next time you can analyze the same files in one click.' },
+  ];
+
+  return (
+    <motion.div
+      variants={itemVariants}
+      className="mb-6 rounded-2xl border border-violet-200 dark:border-violet-900/40 bg-violet-500/5 overflow-hidden"
+    >
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-violet-500 shrink-0" />
+          <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">How to get the best results</span>
+        </div>
+        <motion.span
+          animate={{ rotate: open ? 180 : 0 }}
+          className="text-violet-400 text-xs"
+        >▼</motion.span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <div className={`px-4 pb-4 grid gap-6 ${isLocal ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+              {/* Upload mode guide */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Upload className="w-3.5 h-3.5 text-violet-500" />
+                  <p className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">Upload Mode</p>
+                  <span className="text-[10px] text-neutral-400">— works on any device</span>
+                </div>
+                <div className="space-y-2">
+                  {uploadSteps.map(({ step, text }) => (
+                    <div key={step} className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{step}</span>
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">{text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Local mode guide — only show if local server detected */}
+              {isLocal && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <HardDrive className="w-3.5 h-3.5 text-emerald-500" />
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Local Files Mode</p>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">Instant</span>
+                  </div>
+                  <div className="space-y-2">
+                    {localSteps.map(({ step, text }) => (
+                      <div key={step} className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{step}</span>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">{text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Tips row */}
+            <div className="px-4 pb-4 flex flex-wrap gap-2">
+              {[
+                'Add both video + PDF for contradiction detection',
+                'Results auto-save to cloud after every analysis',
+                'Install the app for faster local access',
+              ].map(tip => (
+                <div key={tip} className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 px-2.5 py-1 rounded-full">
+                  <CheckCircle2 className="w-3 h-3 text-violet-400 shrink-0" />
+                  {tip}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
 
 const FILE_CONFIGS = {
   pdf: {
@@ -112,6 +216,12 @@ function SavedReports({ onOpenReport }) {
     getSavedReports().then(r => { setReports(r); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
+    await deleteReport(id).catch(() => {});
+    setReports(prev => prev.filter(r => r.id !== id));
+  };
+
   if (loading) return null;
   if (reports.length === 0) return null;
 
@@ -128,14 +238,17 @@ function SavedReports({ onOpenReport }) {
         <Folder className="w-4 h-4 text-violet-500" />
         <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Saved Reports</h3>
         <span className="text-xs text-neutral-400">({reports.length})</span>
+        <Cloud className="w-3 h-3 text-violet-400 ml-auto" title="Synced to cloud" />
       </div>
       <div className="space-y-2">
         {visible.map((report) => (
-          <motion.button
+          <motion.div
             key={report.id}
-            whileHover={{ x: 4 }}
+            layout
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="group w-full text-left p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/60 transition-colors flex items-center gap-3 cursor-pointer"
             onClick={() => onOpenReport(report.analysis)}
-            className="w-full text-left p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/60 transition-colors flex items-center gap-3 group"
           >
             <div className="p-2 rounded-lg bg-violet-500/10 shrink-0">
               <FileText className="w-4 h-4 text-violet-500" />
@@ -143,18 +256,26 @@ function SavedReports({ onOpenReport }) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{report.caseName || 'Untitled'}</p>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] text-neutral-400">
-                  {report.contradictionCount || 0} findings
-                </span>
+                <span className="text-[10px] text-neutral-400">{report.contradictionCount || 0} findings</span>
                 <span className="text-[10px] text-neutral-300 dark:text-neutral-600">&middot;</span>
                 <span className="text-[10px] text-neutral-400 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   {report.savedAt ? new Date(report.savedAt).toLocaleDateString() : 'Recently'}
                 </span>
+                {report._savedFrom && report._savedFrom !== window.location.hostname && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">other device</span>
+                )}
               </div>
             </div>
+            <button
+              onClick={(e) => handleDelete(e, report.id)}
+              className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-500/10 text-neutral-400 hover:text-red-500 transition-all shrink-0 mr-1"
+              title="Delete report"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
             <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-neutral-500 transition-colors shrink-0" />
-          </motion.button>
+          </motion.div>
         ))}
       </div>
       {reports.length > 3 && (
@@ -166,6 +287,71 @@ function SavedReports({ onOpenReport }) {
         </button>
       )}
     </motion.div>
+  );
+}
+
+// ─── Local Path Mode (only visible when server is on same machine) ─────
+const LOCAL_PATHS_KEY = 'dp_last_local_paths';
+
+function LocalPathMode({ onAnalyze }) {
+  const [paths, setPaths] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(LOCAL_PATHS_KEY) || '{}'); } catch { return {}; }
+  });
+  const [error, setError] = useState(null);
+
+  const set = (key, val) => setPaths(p => ({ ...p, [key]: val }));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const active = Object.fromEntries(Object.entries(paths).filter(([, v]) => v?.trim()));
+    if (Object.keys(active).length === 0) { setError('Enter at least one file path.'); return; }
+    // Convert pdf to array
+    if (active.pdf) active.pdf = [active.pdf];
+    localStorage.setItem(LOCAL_PATHS_KEY, JSON.stringify(paths));
+    setError(null);
+    onAnalyze({ _localPaths: active });
+  };
+
+  const fields = [
+    { key: 'video', label: 'Video File', icon: Video, color: 'text-amber-500', placeholder: 'C:\\Users\\...\\footage.mp4' },
+    { key: 'pdf',   label: 'Document',   icon: FileText, color: 'text-blue-500',  placeholder: 'C:\\Users\\...\\document.pdf' },
+    { key: 'audio', label: 'Audio File', icon: Headphones, color: 'text-emerald-500', placeholder: 'C:\\Users\\...\\recording.mp3' },
+  ];
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+        Paste the full path to files on this machine. The server reads them directly — no upload needed.
+      </p>
+      {fields.map(({ key, label, icon: Icon, color, placeholder }) => (
+        <div key={key} className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60">
+          <Icon className={`w-4 h-4 ${color} shrink-0`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider mb-1">{label}</p>
+            <input
+              value={paths[key] || ''}
+              onChange={e => set(key, e.target.value)}
+              placeholder={placeholder}
+              className="w-full text-xs bg-transparent text-neutral-800 dark:text-neutral-200 placeholder-neutral-400 focus:outline-none font-mono"
+            />
+          </div>
+          {paths[key] && (
+            <button type="button" onClick={() => set(key, '')} className="p-0.5 text-neutral-400 hover:text-neutral-600">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      ))}
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <motion.button
+        type="submit"
+        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+        disabled={!Object.values(paths).some(v => v?.trim())}
+        className="w-full py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-violet-700 text-white disabled:opacity-40 disabled:cursor-not-allowed shadow-lg hover:shadow-violet-500/25 transition-all"
+      >
+        <Zap className="w-4 h-4" /> Analyze Local Files (Instant)
+      </motion.button>
+    </form>
   );
 }
 
@@ -181,6 +367,14 @@ const itemVariants = {
 
 export default function UploadView({ onAnalyze, onOpenReport, error }) {
   const [files, setFiles] = useState({ pdf: [], audio: [], video: [] });
+  const [isLocal, setIsLocal] = useState(false);
+  const [tab, setTab] = useState('upload'); // 'upload' | 'local'
+
+  useEffect(() => {
+    detectLocalServer().then(local => {
+      setIsLocal(local);
+    });
+  }, []);
 
   const handleDrop = useCallback((type, file) => {
     setFiles(prev => ({ ...prev, [type]: [...prev[type], file] }));
@@ -229,32 +423,65 @@ export default function UploadView({ onAnalyze, onOpenReport, error }) {
           </motion.div>
         )}
 
-        {/* Drop Zones */}
-        <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          {['pdf', 'audio', 'video'].map((type) => (
-            <DropZone key={type} type={type} files={files[type]} onDrop={handleDrop} onRemove={handleRemove} />
-          ))}
-        </motion.div>
+        {/* How-to guide */}
+        <HowToGuide isLocal={isLocal} />
 
-        {/* Actions */}
-        <motion.div variants={itemVariants} className="flex flex-col items-center gap-4">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => hasFiles && onAnalyze(files)}
-            disabled={!hasFiles}
-            className={`
-              w-full max-w-md py-3.5 px-6 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2
-              transition-all duration-300 shadow-lg
-              ${hasFiles
-                ? 'bg-gradient-to-r from-violet-600 to-violet-700 text-white hover:shadow-violet-500/25 hover:shadow-xl cursor-pointer'
-                : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'}
-            `}
-          >
-            <Zap className="w-4 h-4" />
-            Analyze Evidence
-          </motion.button>
-        </motion.div>
+        {/* Mode tabs — local tab only shows when server is on same machine */}
+        {isLocal && (
+          <motion.div variants={itemVariants} className="flex gap-1 p-1 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 mb-6">
+            <button
+              onClick={() => setTab('upload')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'upload' ? 'bg-white dark:bg-neutral-800 shadow-sm text-neutral-900 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+            >
+              <Upload className="w-3.5 h-3.5" /> Upload Files
+            </button>
+            <button
+              onClick={() => setTab('local')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'local' ? 'bg-white dark:bg-neutral-800 shadow-sm text-neutral-900 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+            >
+              <HardDrive className="w-3.5 h-3.5" />
+              Local Files
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 font-semibold">Instant</span>
+            </button>
+          </motion.div>
+        )}
+
+        <AnimatePresence mode="wait">
+          {tab === 'local' ? (
+            <motion.div key="local" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+              <LocalPathMode onAnalyze={onAnalyze} />
+            </motion.div>
+          ) : (
+            <motion.div key="upload" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+              {/* Drop Zones */}
+              <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                {['pdf', 'audio', 'video'].map((type) => (
+                  <DropZone key={type} type={type} files={files[type]} onDrop={handleDrop} onRemove={handleRemove} />
+                ))}
+              </motion.div>
+
+              {/* Actions */}
+              <motion.div variants={itemVariants} className="flex flex-col items-center gap-4">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => hasFiles && onAnalyze(files)}
+                  disabled={!hasFiles}
+                  className={`
+                    w-full max-w-md py-3.5 px-6 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2
+                    transition-all duration-300 shadow-lg
+                    ${hasFiles
+                      ? 'bg-gradient-to-r from-violet-600 to-violet-700 text-white hover:shadow-violet-500/25 hover:shadow-xl cursor-pointer'
+                      : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'}
+                  `}
+                >
+                  <Zap className="w-4 h-4" />
+                  Analyze Evidence
+                </motion.button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Saved Reports */}
         <motion.div variants={itemVariants}>
