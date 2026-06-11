@@ -107,8 +107,9 @@ function HowToGuide({ isLocal }) {
   );
 }
 
-// Where the desktop installer lives (GitHub Releases). Update per release.
-const DESKTOP_DOWNLOAD_URL = 'https://github.com/aryxnsdfs/Data_pirates/releases/latest';
+// Direct one-click download of the latest desktop installer (clean filename
+// kept stable via electron-builder artifactName so this deep-link never breaks).
+const DESKTOP_DOWNLOAD_URL = 'https://github.com/aryxnsdfs/Data_pirates/releases/latest/download/Data-Pirates-Setup.exe';
 
 // Shown only on the hosted website (not inside the desktop app, not on a local
 // server). Drives users to the native desktop app for instant, upload-free speed.

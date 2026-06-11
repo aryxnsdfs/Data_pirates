@@ -47,6 +47,7 @@
   "build": {
     "appId": "space.sanky.datapirates",
     "productName": "Data Pirates",
+    "artifactName": "Data-Pirates-Setup.exe",
     "files": [
       "electron/**",
       "server.js",
