@@ -10,6 +10,10 @@ const { fork } = require('child_process');
 const PORT = 3001;
 const isDev = !app.isPackaged;
 
+// GPU compositing on some Windows drivers paints the window black during heavy
+// animation (the analysis loading screen). Software compositing is reliable.
+app.disableHardwareAcceleration();
+
 // In a packaged build, app code lives in resources/app(.asar). server.js sits at
 // the project root next to this electron/ folder.
 const ROOT = path.join(__dirname, '..');
@@ -80,6 +84,15 @@ function createWindow() {
 
   mainWindow.loadURL(`http://localhost:${PORT}/`);
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
+
+  // Diagnostics — surface renderer crashes/errors instead of a silent black screen
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[renderer] gone:', details.reason, details.exitCode);
+  });
+  mainWindow.webContents.on('unresponsive', () => console.error('[renderer] unresponsive'));
+  mainWindow.webContents.on('console-message', (_e, level, message) => {
+    if (level >= 2) console.error('[renderer console]', message);
+  });
 }
 
 app.whenReady().then(async () => {
