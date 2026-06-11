@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 export default defineConfig({
-  base: '/forensic-engine/',
+  // Web deploy uses the subpath; desktop build sets VITE_BASE=./ for relative assets
+  base: process.env.VITE_BASE || '/forensic-engine/',
   plugins: [react()],
   // ffmpeg.wasm ships its own worker — keep it un-prebundled so the worker URL resolves
   optimizeDeps: {

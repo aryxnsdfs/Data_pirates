@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Headphones, Video, Upload, Sparkles, X, AlertCircle, Zap, Clock, ChevronRight, Folder, HardDrive, Trash2, Cloud, Info, CheckCircle2 } from 'lucide-react';
+import { FileText, Headphones, Video, Upload, Sparkles, X, AlertCircle, Zap, Clock, ChevronRight, Folder, HardDrive, Trash2, Cloud, Info, CheckCircle2, Download, Rocket } from 'lucide-react';
 import { getSavedReports, deleteReport } from '../utils/storage';
 import { detectLocalServer } from '../utils/api';
 
@@ -104,6 +104,49 @@ function HowToGuide({ isLocal }) {
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+// Where the desktop installer lives (GitHub Releases). Update per release.
+const DESKTOP_DOWNLOAD_URL = 'https://github.com/aryxnsdfs/Data_pirates/releases/latest';
+
+// Shown only on the hosted website (not inside the desktop app, not on a local
+// server). Drives users to the native desktop app for instant, upload-free speed.
+function InstallAppBanner() {
+  const isDesktop = typeof window !== 'undefined' && window.dataPiratesDesktop?.isDesktop;
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isLocalHost = /^(localhost|127\.|192\.168\.|10\.|172\.)/.test(host);
+  if (isDesktop || isLocalHost) return null;
+
+  return (
+    <motion.a
+      variants={itemVariants}
+      href={DESKTOP_DOWNLOAD_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
+      className="group block mb-6 rounded-2xl border border-violet-400/40 bg-gradient-to-r from-violet-600 to-fuchsia-600 p-[1.5px] shadow-lg shadow-violet-500/20"
+    >
+      <div className="flex items-center gap-4 rounded-2xl bg-white dark:bg-neutral-950 px-5 py-4">
+        <div className="p-3 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 shrink-0">
+          <Rocket className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-bold text-base">Get the Desktop App</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">Instant · No upload</span>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">
+            Big files analyze in seconds — the app reads them straight off your disk. No waiting for uploads.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-sm font-semibold group-hover:shadow-lg group-hover:shadow-violet-500/30 transition-shadow">
+          <Download className="w-4 h-4" />
+          <span className="hidden sm:inline">Download</span>
+        </div>
+      </div>
+    </motion.a>
   );
 }
 
@@ -422,6 +465,9 @@ export default function UploadView({ onAnalyze, onOpenReport, error }) {
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
           </motion.div>
         )}
+
+        {/* Install desktop app — website only */}
+        <InstallAppBanner />
 
         {/* How-to guide */}
         <HowToGuide isLocal={isLocal} />

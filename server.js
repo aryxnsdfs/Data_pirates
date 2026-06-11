@@ -20,6 +20,14 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Serve the built SPA (used by the desktop/Electron app so the whole app runs
+// from localhost:3001). STATIC_DIR defaults to 'dist'; desktop uses 'dist-desktop'.
+const STATIC_DIR = path.join(__dirname, process.env.STATIC_DIR || 'dist');
+const SERVE_SPA = fs.existsSync(STATIC_DIR);
+if (SERVE_SPA) {
+  app.use(express.static(STATIC_DIR));
+}
+
 // No timeout on the server for long uploads + analysis
 app.use((req, res, next) => {
   req.setTimeout(0);
@@ -1559,6 +1567,14 @@ function getMimeByExt(ext) {
     '.pdf': 'application/pdf',
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
   }[ext.toLowerCase()] || 'application/octet-stream';
+}
+
+// SPA fallback — any non-API, non-uploads GET returns index.html (client routing)
+if (SERVE_SPA) {
+  app.get(/^\/(?!api\/|uploads\/).*/, (req, res, next) => {
+    if (req.method !== 'GET') return next();
+    res.sendFile(path.join(STATIC_DIR, 'index.html'));
+  });
 }
 
 app.listen(PORT, () => {
