@@ -15,6 +15,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = 3001;
+const BASE_PATH = process.env.BASE_PATH || '';
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
@@ -725,7 +726,8 @@ async function runAnalysisPipeline(files, totalStartTime) {
     // .filename = multer-assigned name; .path = full disk path (local mode uses path only)
     const getUploadUrl = (f) => {
       const fname = f.filename || path.basename(f.path || '');
-      return fname ? `/uploads/${fname}` : null;
+      return fname ? `${BASE_PATH}/uploads/${fname}` : null;
+
     };
     analysis.files = {};
     for (const [key, fileArr] of Object.entries(files)) {
@@ -748,7 +750,7 @@ async function runAnalysisPipeline(files, totalStartTime) {
             const fname = `kf_${ts_stamp}_${frame.timestamp}.jpg`;
             const fpath = path.join(__dirname, 'uploads', 'frames', fname);
             fs.writeFileSync(fpath, Buffer.from(frame.part.inlineData.data, 'base64'));
-            analysis.keyframes.push({ ts: frame.timestamp, path: `/uploads/frames/${fname}` });
+            analysis.keyframes.push({ ts: frame.timestamp, path: `${BASE_PATH}/uploads/frames/${fname}` });
           } catch { }
         }
         break;

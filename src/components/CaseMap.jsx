@@ -228,7 +228,7 @@ export default function CaseMap({ analysis, onSeekVideo, onSeekPdf }) {
     const t1 = setTimeout(() => setProgress('Agent 2: Building relationship map...'), 15000);
     const t2 = setTimeout(() => setProgress('Agent 3: Fact-checking all relationships...'), 30000);
     try {
-      const res = await fetch('/api/knowledge-graph', {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/knowledge-graph`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ analysis }),

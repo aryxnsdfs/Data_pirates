@@ -1,0 +1,4 @@
+.env
+src.bak/
+node_modules/
+uploads/

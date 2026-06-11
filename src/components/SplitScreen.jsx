@@ -161,7 +161,7 @@ function QueryBox({ contradiction }) {
     setLoading(true);
     setAnswer('');
     try {
-      const res = await fetch('/api/query', {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: question.trim(), context }),

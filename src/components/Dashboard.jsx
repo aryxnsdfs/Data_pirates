@@ -298,7 +298,7 @@ function TimelineQuery({ analysis, prefill, onClearPrefill }) {
     setLoading(true);
     setAnswer('');
     try {
-      const res = await fetch('/api/query', {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: question.trim(), context: buildContext() }),
@@ -560,7 +560,7 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
     setIsScanningCustom(true);
     setCustomSummary('');
     try {
-      const res = await fetch('/api/scan-range', {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/scan-range`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -588,7 +588,7 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
     setEventsError('');
     setShowEventsDropdown(true);
     try {
-      const res = await fetch('/api/important-events', {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/important-events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -619,7 +619,7 @@ export default function Dashboard({ analysis, setAnalysis, onCardClick }) {
       (analysis.keyObservations || []).forEach(o => {
         ctx += `- ${o.title}: ${o.description}\n`;
       });
-      const res = await fetch('/api/query', {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: caseQuestion.trim(), context: ctx }),

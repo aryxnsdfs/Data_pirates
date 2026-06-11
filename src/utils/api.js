@@ -1,3 +1,5 @@
+const BASE = import.meta.env.BASE_URL; // '/' in dev, '/forensic-engine/' in prod
+
 // Detect if we're connected to a local server (same machine)
 // Returns false when deployed to Firebase Hosting (no local server)
 export async function detectLocalServer() {
@@ -6,7 +8,7 @@ export async function detectLocalServer() {
     return false;
   }
   try {
-    const res = await fetch('/api/ping', { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${BASE}api/ping`, { signal: AbortSignal.timeout(2000) });
     if (!res.ok) return false;
     const data = await res.json();
     return data.local === true;
@@ -17,7 +19,7 @@ export async function detectLocalServer() {
 
 // Analyze files by local path (no upload — server reads from disk directly)
 export async function analyzeByPath(paths) {
-  const res = await fetch('/api/analyze-local', {
+  const res = await fetch(`${BASE}api/analyze-local`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths }),
@@ -37,7 +39,7 @@ export async function analyzeEvidence(files, onUploadProgress) {
   // Use XMLHttpRequest for upload progress tracking on large files
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/analyze');
+    xhr.open('POST', `${BASE}api/analyze`);
     xhr.timeout = 600000; // 10 min timeout
 
     // Track upload progress
@@ -72,7 +74,7 @@ export async function translateAnalysis(analysis, language) {
   const stripped = { ...analysis };
   delete stripped.files;
 
-  const response = await fetch('/api/translate', {
+  const response = await fetch(`${BASE}api/translate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ analysis: stripped, language }),
@@ -89,7 +91,7 @@ export async function translateAnalysis(analysis, language) {
 }
 
 export async function deepScanVideo(payload) {
-  const response = await fetch('/api/deepscan', {
+  const response = await fetch(`${BASE}api/deepscan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
