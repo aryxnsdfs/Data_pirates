@@ -29,6 +29,32 @@ export async function analyzeByPath(paths) {
   return data;
 }
 
+// Cloud-fast path: preprocess in the browser (ffmpeg.wasm / pdfjs), then send
+// only the small extracted parts. The big source file is never uploaded.
+export async function analyzeEvidenceClient(files, onProgress) {
+  const { preprocessAllClient } = await import('./clientPreprocess.js');
+
+  // Preprocessing drives 0→100 of the "upload" stage in the loading UI
+  const results = await preprocessAllClient(files, (p) => onProgress?.(p));
+
+  const res = await fetch(`${BASE}api/analyze-preprocessed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ results }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Analysis failed');
+
+  // Attach blob URLs so media plays locally without ever uploading the file
+  data.files = data.files || {};
+  const firstOf = (arr) => (arr && arr.length ? arr[0] : null);
+  const v = firstOf(files.video), a = firstOf(files.audio), p = firstOf(files.pdf);
+  if (v) data.files.video = URL.createObjectURL(v);
+  if (a) data.files.audio = URL.createObjectURL(a);
+  if (p) data.files.pdf = URL.createObjectURL(p);
+  return data;
+}
+
 export async function analyzeEvidence(files, onUploadProgress) {
   const formData = new FormData();
   // Each type is now an array of files

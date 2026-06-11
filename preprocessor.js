@@ -69,11 +69,6 @@ const HAS_PYANNOTE = false;
 function createTempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'dp-pre-')); }
 export function cleanupDir(dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
 
-function ffmpegSync(args, timeout = 600000) {
-  if (!FFMPEG_PATH) throw new Error('FFmpeg not available');
-  execSync(`"${FFMPEG_PATH}" ${args}`, { stdio: 'ignore', timeout, windowsHide: true });
-}
-
 function ffmpegAsync(args, timeout = 45000) {
   return new Promise((resolve, reject) => {
     const proc = exec(`"${FFMPEG_PATH}" ${args}`, { timeout, windowsHide: true }, (err) => {
@@ -84,24 +79,31 @@ function ffmpegAsync(args, timeout = 45000) {
   });
 }
 
-function getMediaDuration(filePath) {
+// Async exec that resolves with { stdout, stderr } and never blocks the
+// event loop — blocking calls here would stall concurrent uploads.
+function execAsync(cmd, timeout) {
+  return new Promise((resolve) => {
+    exec(cmd, { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({ err, stdout: stdout || '', stderr: stderr || '' });
+    });
+  });
+}
+
+async function getMediaDuration(filePath) {
   if (FFPROBE_PATH) {
-    try {
-      const result = execSync(
-        `"${FFPROBE_PATH}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
-        { encoding: 'utf-8', timeout: 15000, windowsHide: true }
-      ).trim();
-      const d = parseFloat(result);
+    const { err, stdout } = await execAsync(
+      `"${FFPROBE_PATH}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
+      15000
+    );
+    if (!err) {
+      const d = parseFloat(stdout.trim());
       if (d > 0) return d;
-    } catch {}
+    }
   }
-  try {
-    execSync(`"${FFMPEG_PATH}" -i "${filePath}"`, { stdio: 'pipe', timeout: 15000, windowsHide: true });
-  } catch (e) {
-    const out = (e.stderr || e.stdout || '').toString();
-    const m = out.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
-    if (m) return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
-  }
+  const { stderr, stdout } = await execAsync(`"${FFMPEG_PATH}" -i "${filePath}"`, 15000);
+  const out = stderr + stdout;
+  const m = out.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+  if (m) return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
   return 0;
 }
 
@@ -195,24 +197,17 @@ async function extractSceneFrames(filePath, duration, tmpDir, maxFrames = 60) {
   const sceneDir = path.join(tmpDir, 'scenes');
   fs.mkdirSync(sceneDir, { recursive: true });
 
-  // Phase 1: Scene detection — extract frames where visual content changes significantly
-  const metaPath = path.join(tmpDir, 'scene_times.txt');
+  // Phase 1: Scene detection — extract frames where visual content changes significantly.
+  // -skip_frame nokey decodes only keyframes (10-50x less decode work on large files);
+  // -an -sn -dn skips audio/subtitle/data decoding entirely.
   try {
     await ffmpegAsync(
-      `-i "${filePath}" -vf "select='gt(scene,${threshold})',scale=280:-2:flags=fast_bilinear,showinfo" -vsync vfr -q:v 18 -frame_pts 1 "${sceneDir}/scene_%04d.jpg" 2>"${metaPath}"`,
+      `-skip_frame nokey -i "${filePath}" -an -sn -dn -vf "select='gt(scene,${threshold})',scale=280:-2:flags=fast_bilinear" -vsync vfr -q:v 18 -frame_pts 1 -threads 0 "${sceneDir}/scene_%04d.jpg"`,
       timeoutMs
     );
-  } catch {
-    // showinfo to stderr is expected, try without metadata capture
-    try {
-      await ffmpegAsync(
-        `-i "${filePath}" -vf "select='gt(scene,${threshold})',scale=280:-2:flags=fast_bilinear" -vsync vfr -q:v 18 -frame_pts 1 "${sceneDir}/scene_%04d.jpg"`,
-        timeoutMs
-      );
-    } catch (err) {
-      console.log(`    ⚠️ Scene detection failed, falling back to uniform sampling: ${err.message?.substring(0, 80)}`);
-      return null; // Signal to use fallback
-    }
+  } catch (err) {
+    console.log(`    ⚠️ Scene detection failed, falling back to uniform sampling: ${err.message?.substring(0, 80)}`);
+    return null; // Signal to use fallback
   }
 
   // Collect extracted scene frames
@@ -340,10 +335,11 @@ async function whisperTranscribe(filePath, duration, tmpDir) {
     const modelPath = path.join(os.homedir(), 'whisper.cpp', 'models', 'ggml-base.en.bin');
     const model = fs.existsSync(modelPath) ? modelPath : 'base.en';
 
-    execSync(
+    const { err: whisperErr } = await execAsync(
       `"${WHISPER_PATH}" -m "${model}" -f "${wavPath}" --output-json -of "${outputPath}" -pp -ml 1`,
-      { stdio: 'ignore', timeout: Math.max(120000, duration * 500), windowsHide: true }
+      Math.max(120000, duration * 500)
     );
+    if (whisperErr) throw whisperErr;
 
     const jsonPath = `${outputPath}.json`;
     if (fs.existsSync(jsonPath)) {
@@ -536,7 +532,7 @@ export async function preprocessVideo(filePath, originalName) {
 
   try {
     console.log(`  🎬 Reading metadata...`);
-    const duration = getMediaDuration(filePath);
+    const duration = await getMediaDuration(filePath);
 
     if (duration <= 0) { cleanupDir(tmpDir); return null; }
 
@@ -675,14 +671,14 @@ export async function preprocessAudio(filePath, originalName) {
   const startTime = Date.now();
 
   try {
-    const duration = getMediaDuration(filePath);
+    const duration = await getMediaDuration(filePath);
     console.log(`  🔊 Audio: ${(duration/60).toFixed(1)} min`);
 
     let audioSamples;
 
     if (duration <= 180) {
       const audioPath = path.join(tmpDir, 'audio.mp3');
-      ffmpegSync(`-i "${filePath}" -ac 1 -ar 16000 -b:a 24k -threads 0 -y "${audioPath}"`, 120000);
+      await ffmpegAsync(`-i "${filePath}" -ac 1 -ar 16000 -b:a 24k -threads 0 -y "${audioPath}"`, 120000);
       const data = fs.readFileSync(audioPath);
       audioSamples = [{ ts: 0, data: data.toString('base64'), isFullAudio: true }];
     } else {
@@ -762,7 +758,7 @@ export async function preprocessImage(filePath, originalName) {
       return { type: 'image', inline: { inlineData: { mimeType: mime[ext] || 'image/jpeg', data: fs.readFileSync(filePath).toString('base64') } }, originalName };
     }
     const out = path.join(tmpDir, 'img.jpg');
-    ffmpegSync(`-i "${filePath}" -vf "scale='min(1024,iw)':-2:flags=lanczos" -q:v 5 -threads 0 -y "${out}"`, 30000);
+    await ffmpegAsync(`-i "${filePath}" -vf "scale='min(1024,iw)':-2:flags=lanczos" -q:v 5 -threads 0 -y "${out}"`, 30000);
     const data = fs.readFileSync(out);
     cleanupDir(tmpDir);
     return { type: 'image', inline: { inlineData: { mimeType: 'image/jpeg', data: data.toString('base64') } }, originalName };

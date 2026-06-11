@@ -15,7 +15,6 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = 3001;
-const BASE_PATH = process.env.BASE_PATH || '';
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
@@ -495,9 +494,7 @@ async function runAnalysisPipeline(files, totalStartTime) {
           contextText += `FILE: "${file.originalname}" (uploaded directly)\n`;
         } catch (uploadErr) {
           console.error(`  Upload failed: ${file.originalname}: ${uploadErr.message}`);
-          return res.status(500).json({
-            message: `Failed to process ${file.originalname}: ${uploadErr.message}`
-          });
+          throw new Error(`Failed to process ${file.originalname}: ${uploadErr.message}`);
         }
       }
     } else {
@@ -514,9 +511,7 @@ async function runAnalysisPipeline(files, totalStartTime) {
             parts.push(part);
           } catch (uploadErr) {
             console.error(`  Upload error: ${file.originalname}: ${uploadErr.message}`);
-            return res.status(500).json({
-              message: `Failed to process ${file.originalname}: ${uploadErr.message}`
-            });
+            throw new Error(`Failed to process ${file.originalname}: ${uploadErr.message}`);
           }
         }
       }
@@ -524,6 +519,15 @@ async function runAnalysisPipeline(files, totalStartTime) {
       contextText = `I am uploading ${fileList.length} evidence file(s) for combined analysis:\n${fileList.join('\n')}\n\nAnalyze ALL of these files TOGETHER.\n\n`;
     }
 
+    return finishAnalysisStage({ parts, contextText, successResults, files, totalStartTime });
+}
+
+// ─── Analysis stage — shared by upload, local-path, and client-preprocessed ──
+// Takes assembled Gemini parts + context + preprocessed results, runs the
+// 2-pass pipeline, and assembles the final analysis object. `files` is used
+// only for type detection and media-URL building (entries may have null paths
+// when the media never touched the server, e.g. client-side preprocessing).
+async function finishAnalysisStage({ parts, contextText, successResults, files, totalStartTime }) {
     // Detect uploaded types early (needed for Pass 2 skip logic)
     const uploadedTypes = new Set(Object.keys(files));
     const hasStandaloneAudio = uploadedTypes.has('audio');
@@ -726,8 +730,7 @@ async function runAnalysisPipeline(files, totalStartTime) {
     // .filename = multer-assigned name; .path = full disk path (local mode uses path only)
     const getUploadUrl = (f) => {
       const fname = f.filename || path.basename(f.path || '');
-      return fname ? `${BASE_PATH}/uploads/${fname}` : null;
-
+      return fname ? `/uploads/${fname}` : null;
     };
     analysis.files = {};
     for (const [key, fileArr] of Object.entries(files)) {
@@ -750,7 +753,7 @@ async function runAnalysisPipeline(files, totalStartTime) {
             const fname = `kf_${ts_stamp}_${frame.timestamp}.jpg`;
             const fpath = path.join(__dirname, 'uploads', 'frames', fname);
             fs.writeFileSync(fpath, Buffer.from(frame.part.inlineData.data, 'base64'));
-            analysis.keyframes.push({ ts: frame.timestamp, path: `${BASE_PATH}/uploads/frames/${fname}` });
+            analysis.keyframes.push({ ts: frame.timestamp, path: `/uploads/frames/${fname}` });
           } catch { }
         }
         break;
@@ -784,6 +787,46 @@ app.post('/api/analyze', handleUpload, async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Analysis error:', error);
+    res.status(500).json({ message: error.message || 'Analysis failed.' });
+  }
+});
+
+// ─── POST /api/analyze-preprocessed ─────────────────────────────────────
+// Cloud-fast path: the browser already ran ffmpeg.wasm / pdfjs locally and
+// sends only the small extracted parts (frames, audio samples, pdf text).
+// The big source file is NEVER uploaded — no 429MB transfer over the network.
+app.post('/api/analyze-preprocessed', async (req, res) => {
+  try {
+    if (!ai) return res.status(400).json({ message: 'GEMINI_API_KEY not configured. Add a valid API key to .env file.' });
+
+    const { results } = req.body;
+    if (!Array.isArray(results) || results.length === 0) {
+      return res.status(400).json({ message: 'No preprocessed results provided.' });
+    }
+
+    const totalStartTime = Date.now();
+    const validResults = results.filter(Boolean);
+    console.log(`\n${'─'.repeat(60)}`);
+    console.log(`📂 Client-preprocessed mode: ${validResults.length} result(s) | ${validResults.map(r => r.type).join(', ')}`);
+
+    // Build Gemini parts from the client-extracted results
+    const { parts, context } = await buildGeminiParts(validResults);
+
+    // Synthesize a `files` map (type → entries) for type detection + URL logic.
+    // Paths are null because the source media never reached the server; the
+    // client attaches blob URLs for playback after the analysis returns.
+    const typeOf = (r) => r.type === 'pdf_text' ? 'pdf' : r.type === 'image' ? 'pdf' : r.type;
+    const files = {};
+    for (const r of validResults) {
+      const key = typeOf(r);
+      if (!files[key]) files[key] = [];
+      files[key].push({ originalname: r.originalName || 'file', path: null });
+    }
+
+    const result = await finishAnalysisStage({ parts, contextText: context, successResults: validResults, files, totalStartTime });
+    res.json(result);
+  } catch (error) {
+    console.error('Preprocessed analysis error:', error);
     res.status(500).json({ message: error.message || 'Analysis failed.' });
   }
 });
@@ -1486,7 +1529,7 @@ app.post('/api/analyze-local', async (req, res) => {
       const ext = path.extname(p);
       const fname = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
       const dest = path.join(uploadsDir, fname);
-      fs.copyFileSync(p, dest);
+      await fs.promises.copyFile(p, dest);
       copiedPaths[type] = dest;
       if (!fakeFiles[type]) fakeFiles[type] = [];
       fakeFiles[type].push({

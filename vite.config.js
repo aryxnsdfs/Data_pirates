@@ -3,6 +3,13 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: '/forensic-engine/',
   plugins: [react()],
+  // ffmpeg.wasm ships its own worker — keep it un-prebundled so the worker URL resolves
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+  },
+  worker: {
+    format: 'es',
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,

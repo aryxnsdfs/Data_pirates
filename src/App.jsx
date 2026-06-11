@@ -5,7 +5,7 @@ import UploadView from './components/UploadView';
 import LoadingScreen from './components/LoadingScreen';
 import Dashboard from './components/Dashboard';
 import SplitScreen from './components/SplitScreen';
-import { analyzeEvidence, analyzeByPath, translateAnalysis } from './utils/api';
+import { analyzeEvidence, analyzeEvidenceClient, analyzeByPath, translateAnalysis, detectLocalServer } from './utils/api';
 import { saveReport } from './utils/storage';
 
 export default function App() {
@@ -35,9 +35,21 @@ export default function App() {
         // Local path mode — no upload, server reads files directly
         result = await analyzeByPath(uploadedFiles._localPaths);
       } else {
-        result = await analyzeEvidence(uploadedFiles, (progress) => {
-          setUploadProgress(progress);
-        });
+        // Cloud (remote host): preprocess in the browser so the big file is
+        // never uploaded. Local server: direct upload (native ffmpeg, fastest).
+        const isLocal = await detectLocalServer();
+        if (isLocal) {
+          result = await analyzeEvidence(uploadedFiles, (p) => setUploadProgress(p));
+        } else {
+          try {
+            result = await analyzeEvidenceClient(uploadedFiles, (p) => setUploadProgress(p));
+          } catch (clientErr) {
+            // ffmpeg.wasm can fail (huge file / low memory) — fall back to upload
+            console.warn('Client preprocessing failed, falling back to upload:', clientErr);
+            setUploadProgress(0);
+            result = await analyzeEvidence(uploadedFiles, (p) => setUploadProgress(p));
+          }
+        }
       }
       // Auto-save to Firebase cloud after every successful analysis
       const fileMeta = buildFileMeta(uploadedFiles);
