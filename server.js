@@ -16,9 +16,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = 3001;
 
+// Writable uploads location. In the packaged desktop app __dirname is inside a
+// read-only install dir, so the Electron main process points UPLOADS_DIR at a
+// per-user writable folder. Falls back to ./uploads for dev/server use.
+const UPLOADS_DIR = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// Resolve a client-supplied media path (e.g. "/uploads/x.mp4") to a real file,
+// rebasing the /uploads prefix onto UPLOADS_DIR (which may live outside __dirname).
+function resolveMediaPath(p) {
+  const clean = String(p).replace(/^[/\\]+/, '');
+  const m = clean.match(/^uploads[/\\]?(.*)$/);
+  return m ? path.join(UPLOADS_DIR, m[1]) : path.join(__dirname, clean);
+}
+
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Serve the built SPA (used by the desktop/Electron app so the whole app runs
 // from localhost:3001). STATIC_DIR defaults to 'dist'; desktop uses 'dist-desktop'.
@@ -38,7 +54,7 @@ app.use((req, res, next) => {
 // Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, 'uploads');
+    const dir = UPLOADS_DIR;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -472,7 +488,7 @@ async function runAnalysisPipeline(files, totalStartTime) {
       console.log(`⚡ Local preprocessing done in ${preprocessTime}s`);
 
       // Save keyframes as static files so the frontend can display them
-      const framesUploadDir = path.join(__dirname, 'uploads', 'frames');
+      const framesUploadDir = path.join(UPLOADS_DIR, 'frames');
       if (!fs.existsSync(framesUploadDir)) fs.mkdirSync(framesUploadDir, { recursive: true });
 
       // Separate successful preprocessed files from fallback files
@@ -574,7 +590,7 @@ async function finishAnalysisStage({ parts, contextText, successResults, files, 
           console.log(`  ✅ ${label}: ${model} responded in ${((Date.now() - start) / 1000).toFixed(1)}s`);
           break;
         } catch (err) {
-          const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.status === 429 || err.status === 404;
+          const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404') || err.message?.includes('NOT_FOUND') || err.message?.includes('503') || err.message?.includes('UNAVAILABLE') || err.status === 429 || err.status === 404 || err.status === 503;
           if (isSkip) { console.warn(`  ⚠️  ${model} unavailable — trying next...`); continue; }
           throw err;
         }
@@ -759,7 +775,7 @@ async function finishAnalysisStage({ parts, contextText, successResults, files, 
         for (const frame of frameSet) {
           try {
             const fname = `kf_${ts_stamp}_${frame.timestamp}.jpg`;
-            const fpath = path.join(__dirname, 'uploads', 'frames', fname);
+            const fpath = path.join(UPLOADS_DIR, 'frames', fname);
             fs.writeFileSync(fpath, Buffer.from(frame.part.inlineData.data, 'base64'));
             analysis.keyframes.push({ ts: frame.timestamp, path: `/uploads/frames/${fname}` });
           } catch { }
@@ -861,7 +877,7 @@ ${JSON.stringify(analysis)}`;
         response = await ai.models.generateContent({ model, contents: [{ role: 'user', parts: [{ text: prompt }] }], config });
         break;
       } catch (e) {
-        const isSkip = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED') || e.message?.includes('404') || e.message?.includes('NOT_FOUND') || e.status === 429 || e.status === 404;
+        const isSkip = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED') || e.message?.includes('404') || e.message?.includes('NOT_FOUND') || e.message?.includes('503') || e.message?.includes('UNAVAILABLE') || e.status === 429 || e.status === 404 || e.status === 503;
         if (isSkip) continue;
         throw e;
       }
@@ -905,7 +921,7 @@ Important: Use simple words anyone can understand. Be specific and reference the
         response = await ai.models.generateContent({ model, contents: [{ role: 'user', parts: [{ text: prompt }] }], config });
         break;
       } catch (e) {
-        const isSkip = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED') || e.message?.includes('404') || e.message?.includes('NOT_FOUND') || e.status === 429 || e.status === 404;
+        const isSkip = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED') || e.message?.includes('404') || e.message?.includes('NOT_FOUND') || e.message?.includes('503') || e.message?.includes('UNAVAILABLE') || e.status === 429 || e.status === 404 || e.status === 503;
         if (isSkip) continue;
         throw e;
       }
@@ -1006,8 +1022,7 @@ app.post('/api/scan-range', async (req, res) => {
     }
 
     const duration = endSec - startSec;
-    const cleanPath = videoPath.startsWith('/') ? videoPath.slice(1) : videoPath;
-    const fullPath = path.join(__dirname, cleanPath);
+    const fullPath = resolveMediaPath(videoPath);
     
     console.log(`🎯 [Custom Scan] Extracting ${duration}s clip from ${startSec}s to ${endSec}s...`);
 
@@ -1055,7 +1070,7 @@ RULES:
         });
         break; 
       } catch (err) {
-        const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404');
+        const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404') || err.message?.includes('503') || err.message?.includes('UNAVAILABLE');
         if (isSkip) continue;
         throw err;
       }
@@ -1078,8 +1093,7 @@ app.post('/api/important-events', handleUpload, async (req, res) => {
     const { videoPath, videoDuration } = req.body;
     if (!videoPath) return res.status(400).json({ message: 'Missing videoPath.' });
 
-    const cleanPath = videoPath.startsWith('/') ? videoPath.slice(1) : videoPath;
-    const fullPath = path.join(__dirname, cleanPath);
+    const fullPath = resolveMediaPath(videoPath);
 
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ message: 'Video file not found.' });
@@ -1164,7 +1178,7 @@ Return ONLY the JSON array. No markdown. No extra text. Minimum 4 events.` });
         response = await ai.models.generateContent({ model, contents: [{ role: 'user', parts }], config });
         break;
       } catch (err) {
-        const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404');
+        const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404') || err.message?.includes('503') || err.message?.includes('UNAVAILABLE');
         if (isSkip) continue;
         throw err;
       }
@@ -1250,7 +1264,7 @@ app.post('/api/knowledge-graph', async (req, res) => {
           console.log(`  ✅ ${label}: ${model} responded in ${((Date.now() - start) / 1000).toFixed(1)}s`);
           break;
         } catch (err) {
-          const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404');
+          const isSkip = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('404') || err.message?.includes('503') || err.message?.includes('UNAVAILABLE');
           if (isSkip) continue;
           throw err;
         }
@@ -1528,7 +1542,7 @@ app.post('/api/analyze-local', async (req, res) => {
     allPaths.forEach(({ type, p }) => console.log(`  ${type}: ${p}`));
 
     // Copy files into uploads dir under temp names so we can serve them later
-    const uploadsDir = path.join(__dirname, 'uploads');
+    const uploadsDir = UPLOADS_DIR;
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
     const fakeFiles = {};

@@ -48,12 +48,14 @@
     "appId": "space.sanky.datapirates",
     "productName": "Data Pirates",
     "artifactName": "Data-Pirates-Setup.exe",
+    "asar": false,
     "files": [
       "electron/**",
       "server.js",
       "preprocessor.js",
       "dist-desktop/**",
-      "node_modules/**"
+      "node_modules/**",
+      ".env"
     ],
     "asarUnpack": [
       "node_modules/ffmpeg-static/**",

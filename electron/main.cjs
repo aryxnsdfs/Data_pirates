@@ -19,11 +19,19 @@ let serverProc = null;
 let mainWindow = null;
 
 function startServer() {
-  // Desktop serves the relative-base build from dist-desktop
-  const env = { ...process.env, STATIC_DIR: 'dist-desktop' };
+  // Uploads must live in a writable per-user dir (the install dir is read-only)
+  const uploadsDir = path.join(app.getPath('userData'), 'uploads');
+  const env = {
+    ...process.env,
+    STATIC_DIR: 'dist-desktop',
+    UPLOADS_DIR: uploadsDir,
+    // Run the forked process as plain Node, not a second Electron window
+    ELECTRON_RUN_AS_NODE: '1',
+  };
   serverProc = fork(SERVER_PATH, [], {
     cwd: ROOT,
     env,
+    execPath: process.execPath,
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   serverProc.stdout?.on('data', (d) => console.log('[server]', d.toString().trim()));

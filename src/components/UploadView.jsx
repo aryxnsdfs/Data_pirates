@@ -414,6 +414,12 @@ export default function UploadView({ onAnalyze, onOpenReport, error }) {
   const [isLocal, setIsLocal] = useState(false);
   const [tab, setTab] = useState('upload'); // 'upload' | 'local'
 
+  // Hosted website (not the desktop app, not a local server): show ONLY the
+  // "Get the Desktop App" CTA — uploading happens in the fast desktop app.
+  const isDesktop = typeof window !== 'undefined' && window.dataPiratesDesktop?.isDesktop;
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isWebOnly = !isDesktop && !/^(localhost|127\.|192\.168\.|10\.|172\.)/.test(host);
+
   useEffect(() => {
     detectLocalServer().then(local => {
       setIsLocal(local);
@@ -449,9 +455,13 @@ export default function UploadView({ onAnalyze, onOpenReport, error }) {
           >
             <Sparkles className="w-9 h-9 text-violet-500" />
           </motion.div>
-          <h2 className="text-3xl sm:text-4xl font-bold mb-3 tracking-tight">Upload Evidence Files</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold mb-3 tracking-tight">
+            {isWebOnly ? 'Forensic Evidence Analyzer' : 'Upload Evidence Files'}
+          </h2>
           <p className="text-neutral-500 dark:text-neutral-400 max-w-lg mx-auto leading-relaxed">
-            Drop your case files for AI-powered analysis. Upload documents, audio, and video together for the best results.
+            {isWebOnly
+              ? 'Install the desktop app to analyze video, audio, and documents instantly — files are read straight off your disk, no upload.'
+              : 'Drop your case files for AI-powered analysis. Upload documents, audio, and video together for the best results.'}
           </p>
         </motion.div>
 
@@ -470,6 +480,9 @@ export default function UploadView({ onAnalyze, onOpenReport, error }) {
         {/* Install desktop app — website only */}
         <InstallAppBanner />
 
+        {/* Website shows only the install CTA above; the uploader lives in the
+            desktop app and on a local server. */}
+        {!isWebOnly && (<>
         {/* How-to guide */}
         <HowToGuide isLocal={isLocal} />
 
@@ -534,6 +547,7 @@ export default function UploadView({ onAnalyze, onOpenReport, error }) {
         <motion.div variants={itemVariants}>
           <SavedReports onOpenReport={onOpenReport} />
         </motion.div>
+        </>)}
       </motion.div>
     </motion.div>
   );
